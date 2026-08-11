@@ -1,0 +1,15 @@
+{
+  "extends": "./tsconfig.json",
+  "compilerOptions": {
+    "outDir": "dist"
+  },
+  "include": [
+    "src/shared/**/*.ts",
+    "src/services/**/*.ts",
+    "test/services/**/*.ts",
+    "drizzle.config.ts",
+    "eslint.config.ts",
+    "vitest.config.ts",
+    "vitest.e2e.config.ts"
+  ]
+}
