@@ -79,6 +79,26 @@ O cadastro embutido do Better Auth e a criação avulsa de organização estão 
 A regra que atravessa todo o backend: **`companyId` vem sempre de `request.auth`, nunca do body, da query ou de um header.**
 O porquê e como aplicá-la estão em [`docs/architecture.md`](docs/architecture.md).
 
+## Salas e disponibilidade
+
+```text
+GET    /api/v1/rooms                        # CRUD de salas, tudo atrás de requireAuth
+GET    /api/v1/rooms/:id/schedules          # janela de funcionamento por dia da semana
+PUT    /api/v1/rooms/:id/schedules          # substitui a semana inteira, em uma transação
+DELETE /api/v1/rooms/:id/schedules/:weekday # fecha um dia específico
+
+GET /api/v1/public/:companySlug/rooms/:roomId/availability?date=YYYY-MM-DD
+```
+
+A rota de disponibilidade é pública: é o passo 2 do wizard, consumido por quem ainda não tem conta.
+Ela devolve a grade do dia no fuso da empresa, em ISO 8601 com offset explícito, com o preço de cada slot proporcional à tarifa horária da sala.
+
+Sala sem agenda cadastrada para aquele dia é tratada como fechada, nunca como aberta 24h.
+Sala inativa ou de outra empresa responde 404.
+
+A grade avança em tempo real, não em horário de parede, para que os dias de transição de horário de verão não dupliquem nem percam slots.
+O raciocínio completo, o arredondamento de preço e o tratamento das horas inexistente e ambígua estão em [`docs/architecture.md`](docs/architecture.md).
+
 ## Estrutura
 
 ```text

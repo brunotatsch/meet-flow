@@ -8,6 +8,36 @@ export const AvailabilityQuerySchema = z.object({
 
 export type AvailabilityQuery = z.infer<typeof AvailabilityQuerySchema>;
 
+/**
+ * Slot da grade do passo 2 do fluxo público.
+ *
+ * `startsAt` e `endsAt` exigem offset explícito: a grade é montada no fuso da
+ * empresa, que raramente é o do navegador de quem reserva, e horário local sem fuso
+ * cruzando a API é exatamente como se agenda uma sala na hora errada.
+ */
+export const AvailabilitySlotSchema = z.object({
+  startsAt: z.iso.datetime({ offset: true }),
+  endsAt: z.iso.datetime({ offset: true }),
+  available: z.boolean(),
+  priceInCents: z.number().int().nonnegative(),
+});
+
+export type AvailabilitySlot = z.infer<typeof AvailabilitySlotSchema>;
+
+export const AvailabilityResponseSchema = z.object({
+  roomId: z.uuid(),
+  date: z.iso.date(),
+  /**
+   * Fuso IANA em que a grade foi calculada. Vai junto para o cliente rotular a
+   * grade ("horários de Brasília") sem ter que inferir isso do offset, que muda
+   * entre dias do mesmo ano.
+   */
+  timezone: z.string(),
+  slots: z.array(AvailabilitySlotSchema),
+});
+
+export type AvailabilityResponse = z.infer<typeof AvailabilityResponseSchema>;
+
 export const CreateBookingSchema = z
   .object({
     roomId: z.uuid(),
