@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
   AvailabilityQuerySchema,
+  AvailabilityResponseSchema,
   BookingResponseSchema,
   CreateBookingSchema,
 } from "@shared/schemas/booking.schema";
@@ -36,6 +37,63 @@ describe("AvailabilityQuerySchema", () => {
     expect(() =>
       AvailabilityQuerySchema.parse({ roomId: "nao-e-uuid", date: "2026-01-01" }),
     ).toThrow();
+  });
+});
+
+describe("AvailabilityResponseSchema", () => {
+  function response(slots: unknown[]) {
+    return { roomId, date: "2026-03-08", timezone: "America/New_York", slots };
+  }
+
+  it("aceita slots com offset explícito, inclusive mudando no mesmo dia", () => {
+    const slots = [
+      {
+        startsAt: "2026-03-08T01:00:00-05:00",
+        endsAt: "2026-03-08T02:00:00-05:00",
+        available: true,
+        priceInCents: 12_000,
+      },
+      {
+        startsAt: "2026-03-08T03:00:00-04:00",
+        endsAt: "2026-03-08T04:00:00-04:00",
+        available: false,
+        priceInCents: 12_000,
+      },
+    ];
+
+    expect(() => AvailabilityResponseSchema.parse(response(slots))).not.toThrow();
+  });
+
+  it("aceita grade vazia, que é como um dia sem agenda se apresenta", () => {
+    expect(() => AvailabilityResponseSchema.parse(response([]))).not.toThrow();
+  });
+
+  it("rejeita slot com horário local sem fuso", () => {
+    const slots = [
+      {
+        startsAt: "2026-03-08T01:00:00",
+        endsAt: "2026-03-08T02:00:00",
+        available: true,
+        priceInCents: 12_000,
+      },
+    ];
+
+    expect(() => AvailabilityResponseSchema.parse(response(slots))).toThrow();
+  });
+
+  it("rejeita preço fracionado ou negativo", () => {
+    for (const priceInCents of [1_000.5, -1]) {
+      const slots = [
+        {
+          startsAt: "2026-03-08T01:00:00-05:00",
+          endsAt: "2026-03-08T02:00:00-05:00",
+          available: true,
+          priceInCents,
+        },
+      ];
+
+      expect(() => AvailabilityResponseSchema.parse(response(slots))).toThrow();
+    }
   });
 });
 

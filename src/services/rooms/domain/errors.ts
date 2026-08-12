@@ -18,3 +18,27 @@ export class InvalidRoomDataError extends Error {
     this.name = "InvalidRoomDataError";
   }
 }
+
+export class RoomScheduleNotFoundError extends Error {
+  constructor(
+    readonly roomId: string,
+    readonly weekday: number,
+  ) {
+    super(`A sala ${roomId} não tem agenda cadastrada para o dia ${weekday}.`);
+    this.name = "RoomScheduleNotFoundError";
+  }
+}
+
+export class InvalidRoomScheduleDataError extends Error {
+  constructor(message: string) {
+    super(message);
+    this.name = "InvalidRoomScheduleDataError";
+  }
+}
+
+export class DuplicateWeekdayScheduleError extends Error {
+  constructor(readonly weekday: number) {
+    super(`A semana enviada tem mais de uma janela para o dia ${weekday}.`);
+    this.name = "DuplicateWeekdayScheduleError";
+  }
+}

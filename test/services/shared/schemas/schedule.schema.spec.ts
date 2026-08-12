@@ -1,5 +1,9 @@
 import { describe, expect, it } from "vitest";
-import { RoomScheduleSchema } from "@shared/schemas/schedule.schema";
+import {
+  RoomScheduleResponseSchema,
+  RoomScheduleSchema,
+  WeekScheduleSchema,
+} from "@shared/schemas/schedule.schema";
 
 const validSchedule = {
   weekday: 1,
@@ -35,5 +39,39 @@ describe("RoomScheduleSchema", () => {
 
   it("rejeita slotMinutes fora de [15, 30, 60, 120]", () => {
     expect(() => RoomScheduleSchema.parse({ ...validSchedule, slotMinutes: 45 })).toThrow();
+  });
+});
+
+describe("WeekScheduleSchema", () => {
+  it("aceita a semana vazia, que significa sala fechada todos os dias", () => {
+    expect(() => WeekScheduleSchema.parse([])).not.toThrow();
+  });
+
+  it("aceita um dia por janela", () => {
+    expect(() =>
+      WeekScheduleSchema.parse([validSchedule, { ...validSchedule, weekday: 2 }]),
+    ).not.toThrow();
+  });
+
+  it("rejeita o mesmo dia da semana duas vezes", () => {
+    expect(() => WeekScheduleSchema.parse([validSchedule, validSchedule])).toThrow();
+  });
+
+  it("rejeita mais de sete janelas", () => {
+    const week = [0, 1, 2, 3, 4, 5, 6, 0].map((weekday) => ({ ...validSchedule, weekday }));
+
+    expect(() => WeekScheduleSchema.parse(week)).toThrow();
+  });
+});
+
+describe("RoomScheduleResponseSchema", () => {
+  it("aceita uma janela completa", () => {
+    expect(() =>
+      RoomScheduleResponseSchema.parse({
+        id: "5f6a1e2a-8c1a-4e1a-9c1a-1a2b3c4d5e6f",
+        roomId: "5f6a1e2a-8c1a-4e1a-9c1a-1a2b3c4d5e70",
+        ...validSchedule,
+      }),
+    ).not.toThrow();
   });
 });

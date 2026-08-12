@@ -73,6 +73,78 @@ não consegue resolver `companyId`, e a resposta correta deixa de ser óbvia.
 O restante de `/api/auth/*` (login, logout, sessão) é servido pelo handler do Better Auth,
 montado em `src/services/identity/infra/http/auth-handler.ts`.
 
+## Disponibilidade e fuso horário
+
+### Onde mora cada peça
+
+A janela de funcionamento fica em `room_schedules`, uma linha por sala e dia da semana,
+com `opens_at`, `closes_at` e `slot_minutes`.
+São horários de parede, sem fuso: o fuso é da empresa (`companies.timezone`) e só é
+aplicado quando a janela é resolvida para um dia concreto.
+
+**Sala sem linha em `room_schedules` para aquele dia é sala fechada, nunca sala aberta 24h.**
+O motor devolve uma grade vazia, e o passo 2 do fluxo público mostra "sem horários".
+
+O cálculo é o `CheckAvailabilityUseCase` (`src/services/bookings/application/`), e a
+aritmética de fuso vive isolada em `src/services/bookings/domain/time-zone.ts`, escrita
+sobre o `Intl` do runtime, sem biblioteca de data.
+
+### A grade avança em tempo real, não em horário de parede
+
+Cada slot dura exatamente `slot_minutes` de relógio absoluto, e o próximo começa quando o
+anterior termina, até não caber mais um slot inteiro antes do fechamento.
+
+Gerar as bordas em horário de parede (09:00, 10:00, 11:00...) e converter cada uma para
+instante quebra nos dois dias de transição de horário de verão.
+Quando o relógio adianta, o horário pulado não existe e vira um slot de duração zero.
+Quando o relógio atrasa, a hora repetida gera dois slots com o mesmo rótulo, e uma conversão
+que sempre escolhe a primeira ocorrência os faz apontar para o mesmo instante.
+
+Avançando em tempo real, o dia da virada tem um slot a menos (ou a mais), todos com duração
+real igual à cobrada, e nenhum instante coberto duas vezes.
+Em `America/New_York`, no dia em que o relógio adianta, a grade vai de 01:00 direto para
+03:00 sem buraco no tempo absoluto; no dia em que atrasa, 01:00 aparece duas vezes, com
+offsets diferentes (`-04:00` e `-05:00`).
+Coberto por teste em `test/services/bookings/check-availability.use-case.spec.ts` e ponta a
+ponta em `test/services/bookings/availability.e2e-spec.ts`.
+
+### Datas na fronteira da API
+
+Toda data que cruza a API é ISO 8601 **com offset explícito**, no fuso da empresa
+(`2030-11-03T01:00:00-05:00`), e nunca em UTC nem em horário local solto.
+O offset é o que distingue as duas ocorrências da hora repetida e o que permite ao cliente
+exibir a grade no fuso da sala sem depender do fuso do navegador.
+A resposta ainda carrega o `timezone` IANA, porque o offset sozinho não identifica o fuso.
+
+A entrada é o oposto: `date=YYYY-MM-DD` é data de calendário pura, lida no fuso da empresa.
+Data inexistente (`2026-02-30`) é recusada com 400 em vez de normalizada.
+
+### Preço do slot
+
+`priceInCents = floor((hourly_rate_in_cents * slot_minutes + 30) / 60)`.
+
+Arredondamento meio para cima, em aritmética inteira, sem passar por ponto flutuante.
+Meio para cima e não `floor` nem meio para par: é a regra que qualquer pessoa reproduz de
+cabeça ao conferir a conta.
+
+### Slots no passado
+
+Slot que já começou não entra na grade, nem como indisponível.
+O corte usa um `Clock` injetável (`src/services/bookings/domain/clock.ts`), não `new Date()`
+solto: sem isso, o teste dessa regra dependeria da hora em que a suíte roda.
+
+### Slug no fluxo público
+
+`GET /api/v1/public/:companySlug/rooms/:roomId/availability` não tem sessão, então o tenant
+vem do slug na URL.
+Essa é a **única** exceção à regra de que `companyId` vem de `request.auth`, e ela vale só
+aqui: o slug é resolvido para um `companyId` no banco, e daí em diante toda query filtra por
+esse id.
+Nenhuma rota autenticada aceita o tenant vindo do cliente.
+
+Sala inativa ou de outra empresa responde o mesmo 404 de sala inexistente, sem revelar qual
+dos três casos ocorreu.
+
 ## Erros HTTP
 
 Rotas e hooks sinalizam falha **lançando** `HttpError`

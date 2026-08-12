@@ -13,12 +13,8 @@ import type { DeactivateRoomUseCase } from "../../application/deactivate-room.us
 import type { GetRoomUseCase } from "../../application/get-room.use-case";
 import type { ListRoomsUseCase } from "../../application/list-rooms.use-case";
 import type { UpdateRoomUseCase } from "../../application/update-room.use-case";
-import {
-  DuplicateRoomNameError,
-  InvalidRoomDataError,
-  RoomNotFoundError,
-} from "../../domain/errors";
 import type { Room } from "../../domain/room.entity";
+import { mapRoomError } from "./room-error";
 
 interface RoomParams {
   Params: { id: string };
@@ -102,22 +98,6 @@ export class RoomController {
 
     return reply.send(toRoomResponse(room));
   }
-}
-
-function mapRoomError(error: unknown): never {
-  if (error instanceof RoomNotFoundError) {
-    throw new HttpError(404, "ROOM_NOT_FOUND", error.message);
-  }
-
-  if (error instanceof DuplicateRoomNameError) {
-    throw new HttpError(409, "DUPLICATE_ROOM_NAME", error.message);
-  }
-
-  if (error instanceof InvalidRoomDataError) {
-    throw new HttpError(400, "INVALID_ROOM_DATA", error.message);
-  }
-
-  throw error;
 }
 
 function toRoomResponse(room: Room): RoomResponse {
