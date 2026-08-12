@@ -5,6 +5,14 @@ const envSchema = z.object({
   PORT: z.coerce.number().int().positive().default(3000),
   APP_URL: z.url(),
   DATABASE_URL: z.url({ protocol: /^postgres(ql)?$/ }),
+  /**
+   * Chave de assinatura do Better Auth (cookies de sessão, tokens de verificação).
+   * Trocá-la invalida todas as sessões emitidas; nunca pode vazar nem ser
+   * compartilhada entre ambientes.
+   */
+  BETTER_AUTH_SECRET: z.string().min(32),
+  /** URL pública onde o handler `/api/auth/*` responde. */
+  BETTER_AUTH_URL: z.url(),
 });
 
 export type Env = z.infer<typeof envSchema>;

@@ -1,5 +1,6 @@
 import { z } from "zod";
 import { companyTypeValues } from "@shared/enums/company-type";
+import { NormalizedEmail } from "@shared/schemas/email";
 
 function isValidTimezone(value: string): boolean {
   try {
@@ -12,14 +13,21 @@ function isValidTimezone(value: string): boolean {
 
 export const SignUpSchema = z.object({
   user: z.object({
-    name: z.string().min(2).max(100),
-    email: z.email(),
+    name: z.string().trim().min(2).max(100),
+    email: NormalizedEmail,
     password: z.string().min(8).max(72),
   }),
   company: z.object({
-    name: z.string().min(3).max(100),
+    name: z.string().trim().min(3).max(100),
+    /**
+     * Normaliza antes de validar: espaços nas pontas e maiúsculas são corrigidos,
+     * mas o formato continua sendo exigido. `Hotel Central` segue inválido, porque
+     * o espaço no meio não é algo que dê para adivinhar como hífen ou remoção.
+     */
     slug: z
       .string()
+      .trim()
+      .toLowerCase()
       .min(3)
       .max(60)
       .regex(

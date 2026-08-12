@@ -1,5 +1,7 @@
 dist
 coverage
 bun.lock
+# Saída do drizzle-kit: reformatar embaralha o diff da próxima migration gerada.
+drizzle/
 docs/
 .claude/

@@ -11,16 +11,17 @@
     "lint:fix": "eslint . --fix",
     "format": "prettier --write .",
     "typecheck": "tsc -p tsconfig.services.json --noEmit",
-    "test": "vitest run --config vitest.config.ts",
-    "test:watch": "vitest --config vitest.config.ts",
+    "test": "bun --bun vitest run --config vitest.config.ts",
+    "test:watch": "bun --bun vitest --config vitest.config.ts",
     "test:e2e": "bun --bun vitest run --config vitest.e2e.config.ts",
     "db:generate": "drizzle-kit generate",
     "db:migrate": "bash scripts/migration-run.sh",
     "db:studio": "drizzle-kit studio"
   },
   "dependencies": {
-    "fastify": "5.11.3",
+    "better-auth": "1.6.27",
     "drizzle-orm": "0.45.2",
+    "fastify": "5.11.3",
     "zod": "4.4.3"
   },
   "devDependencies": {

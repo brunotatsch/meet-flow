@@ -47,6 +47,16 @@ describe("SignUpSchema", () => {
     ).toThrow();
   });
 
+  it("normaliza slug e e-mail antes de validar", () => {
+    const parsed = SignUpSchema.parse({
+      user: { ...validSignUp.user, email: "  Bruno@Example.COM " },
+      company: { ...validSignUp.company, slug: "  Hotel-Central  " },
+    });
+
+    expect(parsed.user.email).toBe("bruno@example.com");
+    expect(parsed.company.slug).toBe("hotel-central");
+  });
+
   it("rejeita password curta", () => {
     expect(() =>
       SignUpSchema.parse({
