@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import {
   AvailabilityQuerySchema,
   AvailabilityResponseSchema,
+  BookingFiltersSchema,
   BookingResponseSchema,
   CreateBookingSchema,
 } from "@shared/schemas/booking.schema";
@@ -123,9 +124,67 @@ describe("CreateBookingSchema", () => {
       CreateBookingSchema.parse({ ...validBooking, customerEmail: "nao-e-email" }),
     ).toThrow();
   });
+
+  /**
+   * A remoção acontece aqui, na borda, e é o que garante que o preço do cliente
+   * nunca chegue ao caso de uso: o total é recalculado no servidor a partir da
+   * tarifa da sala.
+   */
+  it("descarta totalInCents e companyId enviados pelo cliente", () => {
+    const parsed = CreateBookingSchema.parse({
+      ...validBooking,
+      totalInCents: 1,
+      companyId,
+      status: "confirmed",
+    });
+
+    expect(parsed).not.toHaveProperty("totalInCents");
+    expect(parsed).not.toHaveProperty("companyId");
+    expect(parsed).not.toHaveProperty("status");
+  });
+});
+
+describe("BookingFiltersSchema", () => {
+  const from = "2026-01-01T00:00:00.000Z";
+  const to = "2026-01-08T00:00:00.000Z";
+
+  it("aceita período com roomId opcional", () => {
+    expect(() => BookingFiltersSchema.parse({ from, to })).not.toThrow();
+    expect(() => BookingFiltersSchema.parse({ from, to, roomId })).not.toThrow();
+  });
+
+  it("rejeita período ausente, invertido ou de duração zero", () => {
+    expect(() => BookingFiltersSchema.parse({ from })).toThrow();
+    expect(() => BookingFiltersSchema.parse({ from: to, to: from })).toThrow();
+    expect(() => BookingFiltersSchema.parse({ from, to: from })).toThrow();
+  });
+
+  it("rejeita data sem fuso", () => {
+    expect(() => BookingFiltersSchema.parse({ from: "2026-01-01T00:00:00", to })).toThrow();
+  });
 });
 
 describe("BookingResponseSchema", () => {
+  it("aceita horário no fuso da empresa, com offset explícito", () => {
+    const response = {
+      id: bookingId,
+      companyId,
+      roomId,
+      customerName: "Maria Silva",
+      customerEmail: "maria@example.com",
+      customerPhone: null,
+      startsAt: "2026-01-01T10:00:00-03:00",
+      endsAt: "2026-01-01T11:00:00-03:00",
+      status: "confirmed",
+      totalInCents: 5000,
+      notes: null,
+      createdAt: "2026-01-01T09:00:00.000Z",
+      updatedAt: "2026-01-01T09:00:00.000Z",
+    };
+
+    expect(() => BookingResponseSchema.parse(response)).not.toThrow();
+  });
+
   it("aceita um payload de resposta completo", () => {
     const response = {
       id: bookingId,

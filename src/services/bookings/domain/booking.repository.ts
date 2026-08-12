@@ -1,4 +1,16 @@
+import type { Booking } from "./booking.entity";
 import type { BookedPeriod } from "./slot";
+
+/**
+ * Recorte da agenda da empresa. O período é obrigatório: a listagem alimenta o
+ * calendário do admin, que sempre olha um intervalo, e uma listagem sem corte
+ * cresceria sem limite junto com o histórico do tenant.
+ */
+export interface BookingFilters {
+  from: Date;
+  to: Date;
+  roomId?: string;
+}
 
 export abstract class BookingRepository {
   /**
@@ -16,4 +28,18 @@ export abstract class BookingRepository {
     from: Date,
     to: Date,
   ): Promise<BookedPeriod[]>;
+
+  abstract findById(id: string, companyId: string): Promise<Booking | null>;
+
+  /** Reservas que **cruzam** o período pedido, de qualquer status, por sala opcional. */
+  abstract listByCompany(companyId: string, filters: BookingFilters): Promise<Booking[]>;
+
+  /**
+   * Persiste a reserva ou lança `BookingConflictError` quando o horário já está
+   * ocupado. A decisão é do banco (`bookings_no_overlap`), nunca de uma leitura
+   * prévia: só a constraint resolve duas requisições simultâneas para o mesmo slot.
+   */
+  abstract create(booking: Booking): Promise<void>;
+
+  abstract update(booking: Booking): Promise<void>;
 }

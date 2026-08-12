@@ -6,6 +6,14 @@ export const EXCLUSION_VIOLATION = "23P01";
 export const CHECK_VIOLATION = "23514";
 /** SQLSTATE de violação de chave estrangeira. */
 export const FOREIGN_KEY_VIOLATION = "23503";
+/**
+ * SQLSTATE genérico de dado inválido.
+ *
+ * Aparece antes das `CHECK` quando o valor não chega nem a ser armazenável: um
+ * `INSERT` em `bookings` com `ends_at < starts_at` morre aqui, no construtor de
+ * `tstzrange` da coluna gerada `period`, e nunca alcança `bookings_period_valid`.
+ */
+export const DATA_EXCEPTION = "22000";
 
 export interface PostgresFailure {
   sqlState: string;
