@@ -13,7 +13,7 @@
     "typecheck": "tsc -p tsconfig.services.json --noEmit",
     "test": "vitest run --config vitest.config.ts",
     "test:watch": "vitest --config vitest.config.ts",
-    "test:e2e": "vitest run --config vitest.e2e.config.ts",
+    "test:e2e": "bun --bun vitest run --config vitest.e2e.config.ts",
     "db:generate": "drizzle-kit generate",
     "db:migrate": "bash scripts/migration-run.sh",
     "db:studio": "drizzle-kit studio"
