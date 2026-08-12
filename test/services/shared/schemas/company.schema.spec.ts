@@ -1,5 +1,9 @@
 import { describe, expect, it } from "vitest";
-import { CompanyPublicSchema, SignUpSchema } from "@shared/schemas/company.schema";
+import {
+  CompanyPublicSchema,
+  PublicCompanyResponseSchema,
+  SignUpSchema,
+} from "@shared/schemas/company.schema";
 
 const validSignUp = {
   user: {
@@ -78,5 +82,33 @@ describe("CompanyPublicSchema", () => {
     };
 
     expect(() => CompanyPublicSchema.parse(company)).not.toThrow();
+  });
+});
+
+describe("PublicCompanyResponseSchema", () => {
+  it("aceita nome, tipo e timezone", () => {
+    const company = {
+      name: "Hotel Central",
+      type: "hotel",
+      timezone: "America/Sao_Paulo",
+    };
+
+    expect(() => PublicCompanyResponseSchema.parse(company)).not.toThrow();
+  });
+
+  it("descarta id e slug como chaves desconhecidas", () => {
+    const parsed = PublicCompanyResponseSchema.parse({
+      id: "5f6a1e2a-8c1a-4e1a-9c1a-1a2b3c4d5e6f",
+      name: "Hotel Central",
+      slug: "hotel-central",
+      type: "hotel",
+      timezone: "America/Sao_Paulo",
+    });
+
+    expect(parsed).toEqual({
+      name: "Hotel Central",
+      type: "hotel",
+      timezone: "America/Sao_Paulo",
+    });
   });
 });

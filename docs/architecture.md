@@ -73,6 +73,67 @@ não consegue resolver `companyId`, e a resposta correta deixa de ser óbvia.
 O restante de `/api/auth/*` (login, logout, sessão) é servido pelo handler do Better Auth,
 montado em `src/services/identity/infra/http/auth-handler.ts`.
 
+## API pública
+
+### Uma superfície própria, separada da administrativa
+
+O wizard de agendamento é usado por quem não tem conta, então ele não pode depender de
+`requireAuth`.
+Toda rota que ele consome mora sob `/api/v1/public/:companySlug`, um plugin Fastify próprio
+(`src/services/http/routes/public.ts`), composto a partir de controllers que já existem em
+`companies`, `rooms` e `bookings` - a MVP-08 não reimplementa nada, só dá a essas peças um
+contrato de exposição mínimo e uma borda comum:
+
+| Rota | O que devolve |
+| --- | --- |
+| `GET /api/v1/public/:companySlug` | Perfil público da empresa: `name`, `type`, `timezone`. |
+| `GET /api/v1/public/:companySlug/rooms` | Só salas ativas, com o recorte de `PublicRoomResponseSchema`. |
+| `GET /api/v1/public/:companySlug/rooms/:roomId/availability` | Grade de horários da MVP-06. |
+| `POST /api/v1/public/:companySlug/bookings` | Cria a reserva da MVP-07. |
+
+### Slug é a única exceção à regra de `companyId`
+
+`companyId` vem sempre de `request.auth`, exceto aqui: dentro do plugin `/public/:companySlug`,
+um único `preHandler` (`createResolveCompanySlug`, em
+`src/services/companies/infra/http/resolve-company-slug.ts`) resolve o slug da URL para uma
+`Company` e a guarda em `request.publicCompany`.
+Controllers leem esse valor com `getPublicCompany(request)`, o equivalente público de
+`getRequestAuth`; nenhum deles consulta o `CompanyRepository` por conta própria, e nenhuma rota
+sob este plugin aceita `companyId` vindo do corpo, da query string ou de um header.
+
+Slug inexistente responde `404 COMPANY_NOT_FOUND` uma única vez, no `preHandler`, antes de
+qualquer controller rodar.
+Sala inativa ou de outra empresa continua respondendo o mesmo `404 ROOM_NOT_FOUND` de sala
+inexistente - a distinção fica só no domínio, nunca na borda pública, para o endpoint não virar
+oráculo de tenants ou salas alheias.
+
+### Serializers explícitos
+
+Cada resposta pública tem um schema e uma função de serialização própria, deliberadamente mais
+estreitos que o modelo interno: `PublicCompanyResponseSchema` descarta `id` e `slug` (quem
+consome já tem o slug na URL), e `PublicRoomResponseSchema` descarta `companyId`, `isActive`,
+`createdAt` e `updatedAt`.
+Nenhum dos dois reaproveita o schema do admin (`RoomResponseSchema`, `CompanyPublicSchema`) por
+acidente de tipagem: são contratos diferentes, com campos diferentes de propósito.
+
+### Rate limit
+
+`@fastify/rate-limit` é registrado uma única vez, no escopo do plugin `/public/:companySlug`,
+cobrindo as quatro rotas com um limite geral (`defaultPublicRateLimitConfig.general`).
+`POST /bookings` sobrescreve esse limite via `config.rateLimit` na própria rota, o mecanismo do
+plugin para dar a uma rota um contador independente do resto do escopo - é o limite mais
+rígido, porque é a única escrita pública e a que mais vale a pena conter contra abuso.
+
+Os dois padrões de produção são propositalmente altos (muito acima do volume de qualquer
+suíte e2e existente): baixar o padrão global para "provar" o 429 quebraria toda suíte que já
+exercita o fluxo público.
+O teste que prova o 429 (`test/services/http/public-rate-limit.e2e-spec.ts`) monta seu próprio
+servidor, com `buildServer({ api: { publicRateLimit: {...} } })` e limites bem menores, em vez
+de depender do padrão global.
+Estourar o limite responde `429` com `code: 'RATE_LIMITED'` e o cabeçalho `Retry-After`, os dois
+via `errorResponseBuilder` devolvendo um `HttpError` comum - o mesmo formato de erro do resto da
+API, sem um caso especial para rate limit.
+
 ## Disponibilidade e fuso horário
 
 ### Onde mora cada peça
@@ -136,11 +197,9 @@ solto: sem isso, o teste dessa regra dependeria da hora em que a suíte roda.
 ### Slug no fluxo público
 
 `GET /api/v1/public/:companySlug/rooms/:roomId/availability` não tem sessão, então o tenant
-vem do slug na URL.
-Essa é a **única** exceção à regra de que `companyId` vem de `request.auth`, e ela vale só
-aqui: o slug é resolvido para um `companyId` no banco, e daí em diante toda query filtra por
-esse id.
-Nenhuma rota autenticada aceita o tenant vindo do cliente.
+vem do slug na URL, resolvido pelo `preHandler` único do plugin `/public/:companySlug`.
+Ver a seção [API pública](#api-pública) para o mecanismo completo (`createResolveCompanySlug`,
+`getPublicCompany`) e por que ele vale só dentro desse plugin.
 
 Sala inativa ou de outra empresa responde o mesmo 404 de sala inexistente, sem revelar qual
 dos três casos ocorreu.

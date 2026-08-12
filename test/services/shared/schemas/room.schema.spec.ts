@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
   CreateRoomSchema,
+  PublicRoomResponseSchema,
   RoomFiltersSchema,
   RoomResponseSchema,
   UpdateRoomSchema,
@@ -83,5 +84,43 @@ describe("RoomResponseSchema", () => {
     };
 
     expect(() => RoomResponseSchema.parse(response)).not.toThrow();
+  });
+});
+
+describe("PublicRoomResponseSchema", () => {
+  it("aceita um payload público válido", () => {
+    const response = {
+      id: "5f6a1e2a-8c1a-4e1a-9c1a-1a2b3c4d5e6f",
+      name: "Sala Executiva",
+      description: null,
+      capacity: 8,
+      hourlyRateInCents: 5000,
+      amenities: [],
+      photoUrl: null,
+    };
+
+    expect(() => PublicRoomResponseSchema.parse(response)).not.toThrow();
+  });
+
+  it("descarta companyId, isActive, createdAt e updatedAt como chaves desconhecidas", () => {
+    const response = {
+      id: "5f6a1e2a-8c1a-4e1a-9c1a-1a2b3c4d5e6f",
+      name: "Sala Executiva",
+      description: null,
+      capacity: 8,
+      hourlyRateInCents: 5000,
+      amenities: [],
+      photoUrl: null,
+    };
+
+    const parsed = PublicRoomResponseSchema.parse({
+      ...response,
+      companyId: "5f6a1e2a-8c1a-4e1a-9c1a-1a2b3c4d5e70",
+      isActive: true,
+      createdAt: "2026-01-01T10:00:00.000Z",
+      updatedAt: "2026-01-01T10:00:00.000Z",
+    });
+
+    expect(parsed).toEqual(response);
   });
 });

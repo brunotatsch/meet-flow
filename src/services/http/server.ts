@@ -1,9 +1,13 @@
 import Fastify, { type FastifyInstance } from "fastify";
 import { registerAuthHandler } from "@services/identity/infra/http/auth-handler";
 import { registerErrorHandler } from "./http-error";
-import { registerApiRoutes } from "./routes/index";
+import { registerApiRoutes, type ApiRoutesOptions } from "./routes/index";
 
-export function buildServer(): FastifyInstance {
+export interface BuildServerOptions {
+  api?: ApiRoutesOptions;
+}
+
+export function buildServer(options: BuildServerOptions = {}): FastifyInstance {
   const app = Fastify({
     logger: true,
   });
@@ -21,7 +25,7 @@ export function buildServer(): FastifyInstance {
    * endpoint de autenticação.
    */
   app.register(registerAuthHandler, { prefix: "/api/auth" });
-  app.register(registerApiRoutes, { prefix: "/api/v1" });
+  app.register((instance) => registerApiRoutes(instance, options.api), { prefix: "/api/v1" });
 
   return app;
 }

@@ -50,3 +50,18 @@ export const CompanyPublicSchema = z.object({
 });
 
 export type CompanyPublic = z.infer<typeof CompanyPublicSchema>;
+
+/**
+ * Perfil da empresa exposto pelo wizard público (`GET /api/v1/public/:companySlug`).
+ *
+ * Sem `id` nem `slug`: quem consome já tem o slug na própria URL, e o `id` interno
+ * não tem uso no fluxo público - toda rota sob `/public/:companySlug` resolve o
+ * tenant de novo a partir do slug, nunca de um id devolvido por outra resposta.
+ */
+export const PublicCompanyResponseSchema = z.object({
+  name: z.string(),
+  type: z.enum(companyTypeValues),
+  timezone: z.string(),
+});
+
+export type PublicCompanyResponse = z.infer<typeof PublicCompanyResponseSchema>;

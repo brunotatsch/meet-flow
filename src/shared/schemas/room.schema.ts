@@ -39,3 +39,22 @@ export const RoomResponseSchema = z.object({
 });
 
 export type RoomResponse = z.infer<typeof RoomResponseSchema>;
+
+/**
+ * Sala exposta no wizard público (`GET /api/v1/public/:companySlug/rooms`).
+ *
+ * Sem `companyId`, `isActive`, `createdAt` nem `updatedAt`: são campos internos, e a
+ * listagem pública já filtra só salas ativas - reafirmar `isActive: true` em toda
+ * linha não informa nada a quem consome.
+ */
+export const PublicRoomResponseSchema = z.object({
+  id: z.uuid(),
+  name: z.string(),
+  description: z.string().nullable(),
+  capacity: z.number().int().positive(),
+  hourlyRateInCents: z.number().int().nonnegative(),
+  amenities: z.array(z.string()),
+  photoUrl: z.url().nullable(),
+});
+
+export type PublicRoomResponse = z.infer<typeof PublicRoomResponseSchema>;
