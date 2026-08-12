@@ -3,4 +3,4 @@ set -euo pipefail
 
 cd "$(dirname "${BASH_SOURCE[0]}")/.."
 
-bunx drizzle-kit migrate
+bun run scripts/migrate.ts
