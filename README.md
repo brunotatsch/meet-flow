@@ -99,6 +99,23 @@ Sala inativa ou de outra empresa responde 404.
 A grade avança em tempo real, não em horário de parede, para que os dias de transição de horário de verão não dupliquem nem percam slots.
 O raciocínio completo, o arredondamento de preço e o tratamento das horas inexistente e ambígua estão em [`docs/architecture.md`](docs/architecture.md).
 
+## Reservas
+
+```text
+POST   /api/v1/public/:companySlug/bookings   # passo 4 do wizard, sem sessão
+GET    /api/v1/bookings?from=&to=&roomId=     # agenda da empresa no período, atrás de requireAuth
+DELETE /api/v1/bookings/:id                   # cancela e devolve o horário para a grade
+```
+
+A prevenção de double-booking não é feita pela aplicação: ela não consulta a disponibilidade antes de gravar, porque isso só moveria a corrida para a janela entre o `SELECT` e o `INSERT`.
+Quem arbitra é a constraint `bookings_no_overlap`, e o `23P01` vira `409` com `code: BOOKING_CONFLICT`.
+N requisições simultâneas para o mesmo horário produzem exatamente uma reserva, e o teste de concorrência em `test/services/bookings/booking.e2e-spec.ts` prova isso contra o Postgres.
+
+`total_in_cents` é sempre calculado no servidor, a partir da tarifa da sala e da grade do dia; um preço enviado no corpo é descartado na validação.
+Horário fora da janela de funcionamento, fora das bordas da grade ou já iniciado responde `422`.
+
+Cancelar não apaga a linha: o `status` vira `cancelled`, a reserva sai do índice da constraint e o horário volta para a grade, preservando o histórico.
+
 ## Estrutura
 
 ```text

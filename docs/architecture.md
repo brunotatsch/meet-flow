@@ -145,6 +145,59 @@ Nenhuma rota autenticada aceita o tenant vindo do cliente.
 Sala inativa ou de outra empresa responde o mesmo 404 de sala inexistente, sem revelar qual
 dos três casos ocorreu.
 
+## Reservas
+
+### A invariante é do banco, e a aplicação só a traduz
+
+`CreateBookingUseCase` **não** consulta a disponibilidade antes de gravar.
+Consultar moveria a corrida para a janela entre o `SELECT` e o `INSERT`: duas requisições
+simultâneas leriam a sala livre e as duas gravariam.
+
+Quem arbitra é a constraint `bookings_no_overlap`.
+`DrizzleBookingRepository` captura o SQLSTATE `23P01` e o relança como
+`BookingConflictError`, que a borda HTTP traduz em `409` com `code: 'BOOKING_CONFLICT'`.
+A garantia é a mesma com uma requisição ou com cem, e é isso que o teste de concorrência de
+`test/services/bookings/booking.e2e-spec.ts` prova: N requisições idênticas produzem
+exatamente uma reserva, N-1 respostas 409 e nenhum 500.
+
+Cancelar não apaga a linha: o `status` vai para `cancelled`, a reserva sai do índice parcial
+da constraint e o horário volta para a grade, sem perder o histórico.
+
+### O preço é sempre do servidor
+
+`total_in_cents` é calculado a partir da tarifa da sala e da grade do dia, nunca do corpo da
+requisição. `CreateBookingSchema` não tem campo de preço, e como `z.object` descarta chaves
+desconhecidas, um `totalInCents` enviado pelo cliente é removido antes de chegar ao caso de uso.
+
+O total é a **soma dos slots ocupados**, não o preço da duração inteira.
+Com tarifa de 33 centavos por hora e grade de 30 minutos, dois slots custam 17 cada e somam 34,
+enquanto cobrar a hora cheia daria 33.
+Vale o que a grade mostrou ao cliente no passo 2.
+
+### O período pedido precisa ser uma sequência de slots da grade
+
+A janela vem de `room_schedules`, resolvida para o dia em que a reserva começa **no fuso da
+empresa** - uma reserva das 21:00 de uma segunda em São Paulo já é terça em UTC, e ler o dia
+da semana do instante bruto puxaria a agenda errada.
+
+Três recusas distintas, todas com `422`:
+
+| Situação | `code` |
+| --- | --- |
+| Sala fechada nesse dia, ou período fora de `[opensAt, closesAt)` | `OUTSIDE_BUSINESS_HOURS` |
+| Início ou duração que não caem nas bordas da grade de `slot_minutes` | `SLOT_NOT_ALIGNED` |
+| Horário que já começou, medido pelo `Clock` | `BOOKING_IN_THE_PAST` |
+
+O alinhamento não é preciosismo: aceitar 09:15-10:15 numa grade de hora cheia bloquearia dois
+slots ofertados e cobraria um.
+
+### Sala inativa responde como sala inexistente
+
+O domínio distingue `RoomNotFoundError` de `RoomNotAvailableError`, mas a borda pública
+responde o mesmo `404 ROOM_NOT_FOUND`, com a mesma mensagem, nos dois casos.
+É o mesmo critério já adotado na rota de disponibilidade: respostas diferentes transformariam
+o endpoint em oráculo para descobrir salas de outras empresas.
+
 ## Erros HTTP
 
 Rotas e hooks sinalizam falha **lançando** `HttpError`

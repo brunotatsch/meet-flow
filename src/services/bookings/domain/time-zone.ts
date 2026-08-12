@@ -164,6 +164,19 @@ export function zonedTimeToInstant(
 }
 
 /**
+ * Data de calendário em que o instante cai **no fuso da empresa**.
+ *
+ * É o que decide de qual dia da semana a reserva puxa a janela de funcionamento.
+ * Ler o dia com `getUTCDate()` erraria toda reserva noturna: 21:00 de segunda em São
+ * Paulo já é terça em UTC, e a sala seria checada contra a agenda do dia seguinte.
+ */
+export function calendarDateAt(timeZone: string, instant: Date): CalendarDate {
+  const { year, month, day } = partsAt(timeZone, instant);
+
+  return { year, month, day };
+}
+
+/**
  * Serializa o instante em ISO 8601 **com o offset do fuso da empresa**, nunca em UTC.
  *
  * O offset explícito é o que permite ao cliente exibir a grade no fuso da sala sem

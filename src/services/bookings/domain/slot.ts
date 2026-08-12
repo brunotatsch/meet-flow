@@ -32,6 +32,23 @@ export function slotPriceInCents(hourlyRateInCents: number, slotMinutes: number)
 }
 
 /**
+ * Total da reserva: a **soma dos slots ocupados**, não o preço da duração inteira.
+ *
+ * A diferença aparece quando o preço do slot não é exato. Com tarifa de 33 centavos
+ * por hora e grade de 30 minutos, cada slot custa 17 (arredondado meio para cima) e
+ * dois slots somam 34, enquanto cobrar a hora cheia daria 33. O cliente escolheu dois
+ * slots de 17 na grade do passo 2, então é 34 que ele espera ver na confirmação -
+ * cobrar diferente do que a grade mostrou é o tipo de discrepância que vira disputa.
+ */
+export function bookingTotalInCents(
+  hourlyRateInCents: number,
+  slotMinutes: number,
+  slotCount: number,
+): number {
+  return slotPriceInCents(hourlyRateInCents, slotMinutes) * slotCount;
+}
+
+/**
  * Colisão em intervalo semiaberto `[startsAt, endsAt)`, a mesma semântica do
  * `tstzrange(starts_at, ends_at, '[)')` que a constraint `bookings_no_overlap` usa
  * no banco. Encostar não é colidir: a reserva que termina 10:00 libera o slot que

@@ -38,6 +38,14 @@ export const AvailabilityResponseSchema = z.object({
 
 export type AvailabilityResponse = z.infer<typeof AvailabilityResponseSchema>;
 
+/**
+ * Corpo do passo 4 do fluxo público.
+ *
+ * Não existe campo de preço, e isso é proposital: `z.object` descarta chaves
+ * desconhecidas, então um `totalInCents` enviado pelo cliente é silenciosamente
+ * removido aqui e o servidor recalcula o valor a partir da tarifa da sala.
+ * `companyId` também não aparece - o tenant vem do slug da URL, nunca do corpo.
+ */
 export const CreateBookingSchema = z
   .object({
     roomId: z.uuid(),
@@ -55,6 +63,24 @@ export const CreateBookingSchema = z
 
 export type CreateBookingInput = z.infer<typeof CreateBookingSchema>;
 
+/**
+ * Recorte da agenda pedido pelo admin. O período é obrigatório: a listagem alimenta
+ * um calendário, que sempre olha um intervalo, e sem corte a resposta cresceria
+ * junto com o histórico do tenant.
+ */
+export const BookingFiltersSchema = z
+  .object({
+    from: z.iso.datetime({ offset: true }),
+    to: z.iso.datetime({ offset: true }),
+    roomId: z.uuid().optional(),
+  })
+  .refine((data) => new Date(data.to) > new Date(data.from), {
+    error: "to deve ser posterior a from",
+    path: ["to"],
+  });
+
+export type BookingFilters = z.infer<typeof BookingFiltersSchema>;
+
 export const BookingResponseSchema = z.object({
   id: z.uuid(),
   companyId: z.uuid(),
@@ -62,8 +88,14 @@ export const BookingResponseSchema = z.object({
   customerName: z.string(),
   customerEmail: z.email(),
   customerPhone: z.string().nullable(),
-  startsAt: z.iso.datetime(),
-  endsAt: z.iso.datetime(),
+  /**
+   * Offset explícito, no fuso da empresa, pela mesma razão dos slots da grade: a
+   * confirmação precisa dizer "14:00 na sala", e não a tradução disso para o fuso do
+   * navegador de quem reservou. `createdAt` e `updatedAt` seguem em UTC porque são
+   * carimbos de auditoria, não horário de parede da sala.
+   */
+  startsAt: z.iso.datetime({ offset: true }),
+  endsAt: z.iso.datetime({ offset: true }),
   status: z.enum(bookingStatusValues),
   totalInCents: z.number().int().nonnegative(),
   notes: z.string().nullable(),

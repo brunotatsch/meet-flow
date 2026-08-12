@@ -2,9 +2,8 @@ import type { FastifyReply, FastifyRequest } from "fastify";
 import { AvailabilityQuerySchema } from "@shared/schemas/booking.schema";
 import type { CompanyRepository } from "@services/companies/domain/company.repository";
 import { HttpError } from "@services/http/http-error";
-import { RoomNotFoundError } from "@services/rooms/domain/errors";
 import type { CheckAvailabilityUseCase } from "../../application/check-availability.use-case";
-import { InvalidAvailabilityDateError } from "../../domain/errors";
+import { mapBookingError } from "./booking-error";
 
 interface AvailabilityRequest {
   Params: { companySlug: string; roomId: string };
@@ -56,20 +55,8 @@ export class PublicAvailabilityController {
 
     const availability = await this.checkAvailabilityUseCase
       .execute({ companyId: company.id, roomId: parsed.data.roomId, date: parsed.data.date })
-      .catch(mapAvailabilityError);
+      .catch(mapBookingError);
 
     return reply.send(availability);
   }
-}
-
-function mapAvailabilityError(error: unknown): never {
-  if (error instanceof RoomNotFoundError) {
-    throw new HttpError(404, "ROOM_NOT_FOUND", error.message);
-  }
-
-  if (error instanceof InvalidAvailabilityDateError) {
-    throw new HttpError(400, "VALIDATION_ERROR", error.message);
-  }
-
-  throw error;
 }

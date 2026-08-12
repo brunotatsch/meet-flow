@@ -1,4 +1,5 @@
 import { beforeEach, describe, expect, it } from "vitest";
+import { BookingStatus } from "@shared/enums/booking-status";
 import { AvailabilityResponseSchema } from "@shared/schemas/booking.schema";
 import { CheckAvailabilityUseCase } from "@services/bookings/application/check-availability.use-case";
 import { InvalidAvailabilityDateError } from "@services/bookings/domain/errors";
@@ -49,7 +50,11 @@ async function scheduleTuesday(
   ]);
 }
 
-function bookedAt(startsAt: string, endsAt: string, status = "confirmed"): void {
+function bookedAt(
+  startsAt: string,
+  endsAt: string,
+  status: BookingStatus = BookingStatus.CONFIRMED,
+): void {
   bookings.add({
     companyId: COMPANY_ID,
     roomId: room.id,
@@ -205,7 +210,7 @@ describe("CheckAvailabilityUseCase", () => {
 
   it("ignora reserva cancelada", async () => {
     await scheduleTuesday();
-    bookedAt("2026-09-01T13:00:00Z", "2026-09-01T14:00:00Z", "cancelled");
+    bookedAt("2026-09-01T13:00:00Z", "2026-09-01T14:00:00Z", BookingStatus.CANCELLED);
 
     const { slots } = await useCase.execute({
       companyId: COMPANY_ID,
