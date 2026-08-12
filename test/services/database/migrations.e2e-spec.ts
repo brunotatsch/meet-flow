@@ -4,7 +4,12 @@ import { runMigrations } from "@services/database/migrator";
 import { bookings } from "@services/bookings/infra/database/schema/bookings";
 import { companies } from "@services/companies/infra/database/schema/companies";
 import { rooms } from "@services/rooms/infra/database/schema/rooms";
-import { captureSqlFailure, createTestDatabase, type TestDatabase } from "../setup/test-database";
+import {
+  captureSqlFailure,
+  createTestDatabase,
+  insertOrganization,
+  type TestDatabase,
+} from "../setup/test-database";
 
 let database: TestDatabase;
 
@@ -78,6 +83,7 @@ describe("coluna gerada bookings.period", () => {
   });
 
   it("acompanha starts_at e ends_at sem a aplicação tocar em period", async () => {
+    await insertOrganization(database, "org_period");
     const [company] = await database.db
       .insert(companies)
       .values({

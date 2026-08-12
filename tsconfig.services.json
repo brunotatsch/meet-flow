@@ -7,6 +7,7 @@
     "src/shared/**/*.ts",
     "src/services/**/*.ts",
     "test/services/**/*.ts",
+    "better-auth-cli.config.ts",
     "drizzle.config.ts",
     "eslint.config.ts",
     "vitest.config.ts",

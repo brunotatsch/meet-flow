@@ -41,6 +41,13 @@ export default defineConfig({
     environment: "node",
     passWithNoTests: true,
     testTimeout: 20_000,
+    /**
+     * O Bun resolve o `zod` para o build CJS, e o `import { z }` chega `undefined`
+     * dentro do pipeline do Vitest. Processar o pacote inline resolve pelo campo
+     * `import` do `exports`. Sem isso, qualquer spec que alcance `@shared/schemas`
+     * quebra com "undefined is not an object".
+     */
+    server: { deps: { inline: ["zod"] } },
     globalSetup: ["test/services/setup/reset-test-database.ts"],
     // As specs compartilham o mesmo banco; rodar em paralelo embaralharia os dados.
     fileParallelism: false,

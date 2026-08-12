@@ -1,7 +1,7 @@
 # meet-flow
 
 SaaS de agendamento de salas para hotéis e coworkings.
-A arquitetura e o roteiro completo estão em [`docs/plano.md`](docs/plano.md).
+O roteiro completo está em [`docs/plano.md`](docs/plano.md) e as decisões já implementadas em [`docs/architecture.md`](docs/architecture.md).
 
 ## Requisitos
 
@@ -51,6 +51,33 @@ Como o intervalo é semiaberto, uma reserva que começa exatamente quando a ante
 A aplicação nunca escreve `period`: a coluna nem existe no schema TypeScript.
 
 Conflito de horário chega na aplicação como o SQLSTATE `23P01`, que a MVP-07 traduz para HTTP 409.
+
+As tabelas de autenticação (`user`, `session`, `account`, `verification`, `organization`, `member`, `invitation`) são geradas pelo CLI do Better Auth:
+
+```bash
+bunx @better-auth/cli generate \
+  --config better-auth-cli.config.ts \
+  --output src/services/identity/infra/database/schema/auth.ts
+```
+
+A config da raiz existe porque o CLI roda sob Node e não carrega o driver `bun-sql`.
+Ela importa a mesma lista de plugins que a aplicação usa, então o schema gerado não diverge do runtime.
+A saída do CLI precisa de uma edição manual, descrita no cabeçalho do arquivo gerado.
+
+## Autenticação e multi-tenancy
+
+O tenant é a `organization` do Better Auth; `companies` guarda o perfil de negócio e aponta para ela.
+
+```text
+POST /api/v1/sign-up   # cria usuário, organização, vínculo owner e company em uma transação
+GET  /api/v1/me        # usuário, company e papel da sessão atual
+POST /api/auth/*       # login, logout e sessão, servidos pelo Better Auth
+```
+
+O cadastro embutido do Better Auth e a criação avulsa de organização estão desligados: o cadastro tem um caminho só.
+
+A regra que atravessa todo o backend: **`companyId` vem sempre de `request.auth`, nunca do body, da query ou de um header.**
+O porquê e como aplicá-la estão em [`docs/architecture.md`](docs/architecture.md).
 
 ## Estrutura
 

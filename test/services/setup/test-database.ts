@@ -1,6 +1,7 @@
 import { SQL } from "bun";
 import { drizzle } from "drizzle-orm/bun-sql";
 import * as schema from "@services/database/schema";
+import { findPostgresFailure, type PostgresFailure } from "@services/database/postgres-error";
 
 export type TestDatabase = ReturnType<typeof createTestDatabase>;
 
@@ -25,23 +26,29 @@ export function createTestDatabase() {
   };
 }
 
-export interface SqlFailure {
-  /** SQLSTATE: `23P01` exclusão, `23514` check, `23503` FK, `428C9` coluna gerada. */
-  sqlState: string;
-  /** Nome da constraint violada, quando o Postgres o informa. */
-  constraint: string | null;
+/**
+ * Cria a organização do Better Auth que serve de tenant.
+ *
+ * `companies.organization_id` referencia `organization.id`, então toda spec que
+ * insere uma `company` precisa do tenant antes. O id vira também nome e slug para
+ * a spec não ter que inventar três valores só para satisfazer o `not null`.
+ */
+export async function insertOrganization(database: TestDatabase, id: string): Promise<string> {
+  await database.db
+    .insert(schema.organization)
+    .values({ id, name: id, slug: id, createdAt: new Date() });
+
+  return id;
 }
+
+export type SqlFailure = PostgresFailure;
 
 /**
  * Executa a operação e devolve a falha do Postgres, ou `null` se ela foi aceita.
  *
- * Duas particularidades da stack justificam este helper, e a MVP-07 vai precisar
- * das duas para traduzir conflito em 409:
- *
- * 1. o Drizzle embrulha o erro do driver em `DrizzleQueryError`, então o erro do
- *    Postgres só aparece descendo a cadeia de `cause`;
- * 2. o driver do Bun põe o SQLSTATE em `errno` e reserva `code` para o rótulo
- *    genérico `ERR_POSTGRES_SERVER_ERROR`.
+ * A extração do SQLSTATE vive em `@services/database/postgres-error` porque a
+ * aplicação precisa exatamente da mesma lógica para traduzir violação de
+ * constraint em resposta HTTP.
  */
 export async function captureSqlFailure(
   operation: () => Promise<unknown>,
@@ -50,7 +57,7 @@ export async function captureSqlFailure(
     await operation();
     return null;
   } catch (error) {
-    const failure = findPostgresError(error);
+    const failure = findPostgresFailure(error);
 
     if (!failure) {
       throw error;
@@ -58,26 +65,4 @@ export async function captureSqlFailure(
 
     return failure;
   }
-}
-
-function findPostgresError(error: unknown): SqlFailure | null {
-  let current = error;
-
-  while (current instanceof Error) {
-    const { errno, constraint } = current as unknown as {
-      errno?: unknown;
-      constraint?: unknown;
-    };
-
-    if (typeof errno === "string") {
-      return {
-        sqlState: errno,
-        constraint: typeof constraint === "string" ? constraint : null,
-      };
-    }
-
-    current = current.cause;
-  }
-
-  return null;
 }

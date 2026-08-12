@@ -6,6 +6,8 @@ const validSource = {
   PORT: "3001",
   APP_URL: "http://localhost:3001",
   DATABASE_URL: "postgres://meetflow:meetflow@localhost:5433/meetflow_test",
+  BETTER_AUTH_SECRET: "test-secret-change-me-0123456789abcdef",
+  BETTER_AUTH_URL: "http://localhost:3001",
 };
 
 describe("loadEnv", () => {
@@ -17,6 +19,8 @@ describe("loadEnv", () => {
       PORT: 3001,
       APP_URL: "http://localhost:3001",
       DATABASE_URL: "postgres://meetflow:meetflow@localhost:5433/meetflow_test",
+      BETTER_AUTH_SECRET: "test-secret-change-me-0123456789abcdef",
+      BETTER_AUTH_URL: "http://localhost:3001",
     });
   });
 
@@ -52,5 +56,23 @@ describe("loadEnv", () => {
 
   it("rejeita quando NODE_ENV tem um valor fora do enum", () => {
     expect(() => loadEnv({ ...validSource, NODE_ENV: "staging" })).toThrow(/NODE_ENV/);
+  });
+
+  it("rejeita quando BETTER_AUTH_SECRET está ausente", () => {
+    const { BETTER_AUTH_SECRET: _BETTER_AUTH_SECRET, ...rest } = validSource;
+
+    expect(() => loadEnv(rest)).toThrow(/BETTER_AUTH_SECRET/);
+  });
+
+  it("rejeita um BETTER_AUTH_SECRET curto demais para assinar sessão", () => {
+    expect(() => loadEnv({ ...validSource, BETTER_AUTH_SECRET: "curto" })).toThrow(
+      /BETTER_AUTH_SECRET/,
+    );
+  });
+
+  it("rejeita quando BETTER_AUTH_URL não é uma URL válida", () => {
+    expect(() => loadEnv({ ...validSource, BETTER_AUTH_URL: "nao-e-uma-url" })).toThrow(
+      /BETTER_AUTH_URL/,
+    );
   });
 });

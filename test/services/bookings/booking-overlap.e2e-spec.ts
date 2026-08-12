@@ -3,7 +3,12 @@ import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
 import { bookings } from "@services/bookings/infra/database/schema/bookings";
 import { companies } from "@services/companies/infra/database/schema/companies";
 import { rooms } from "@services/rooms/infra/database/schema/rooms";
-import { captureSqlFailure, createTestDatabase, type TestDatabase } from "../setup/test-database";
+import {
+  captureSqlFailure,
+  createTestDatabase,
+  insertOrganization,
+  type TestDatabase,
+} from "../setup/test-database";
 
 /** 2026-09-01 é uma terça-feira; os horários são fixos para o teste ser determinístico. */
 const NOON = new Date("2026-09-01T12:00:00.000Z");
@@ -38,6 +43,9 @@ function bookingAt(
 
 beforeAll(async () => {
   database = createTestDatabase();
+
+  await insertOrganization(database, "org_overlap");
+  await insertOrganization(database, "org_foreign");
 
   const [company, otherCompany] = await database.db
     .insert(companies)

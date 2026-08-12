@@ -1,5 +1,6 @@
 import { sql } from "drizzle-orm";
 import { check, pgEnum, pgTable, text, timestamp, unique, uuid } from "drizzle-orm/pg-core";
+import { organization } from "@services/identity/infra/database/schema/auth";
 
 export const companyType = pgEnum("company_type", ["hotel", "coworking"]);
 
@@ -8,11 +9,18 @@ export const companies = pgTable(
   {
     id: uuid().primaryKey().defaultRandom(),
     /**
-     * Organização do Better Auth que representa o tenant.
-     * A FK só é criada na MVP-04, quando as tabelas de auth passam a existir;
-     * o tipo é `text` porque o Better Auth gera ids textuais, não uuid.
+     * Organização do Better Auth que representa o tenant, um-para-um com esta linha
+     * (garantido pelo unique abaixo). O tipo é `text` porque o Better Auth gera ids
+     * textuais, não uuid.
+     *
+     * `onDelete: "cascade"`: apagar a organização apaga o perfil de negócio junto.
+     * As reservas seguram esse apagamento, porque `bookings.company_id` é
+     * `onDelete: "restrict"`; excluir um tenant com histórico é uma operação
+     * deliberada, não um efeito colateral.
      */
-    organizationId: text().notNull(),
+    organizationId: text()
+      .notNull()
+      .references(() => organization.id, { onDelete: "cascade" }),
     name: text().notNull(),
     slug: text().notNull(),
     type: companyType().notNull(),
