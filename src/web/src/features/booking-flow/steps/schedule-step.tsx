@@ -7,8 +7,8 @@ import { Skeleton } from "@web/components/skeleton";
 import { api } from "@web/lib/api";
 import { useBookingWizardContext } from "../use-booking-wizard-context";
 import { SlotGrid } from "../components/slot-grid";
-import { currencyFormatter } from "../lib/format-time";
-import { useKeyedFetch } from "../lib/use-keyed-fetch";
+import { currencyFormatter } from "@web/lib/money";
+import { useKeyedFetch } from "@web/lib/use-keyed-fetch";
 import { toggleSlotSelection, totalPriceInCents } from "../lib/slot-selection";
 
 interface Availability {

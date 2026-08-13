@@ -33,8 +33,3 @@ export function formatDurationMinutes(startsAt: string, endsAt: string): string 
   if (remainder === 0) return `${hours}h`;
   return `${hours}h${remainder}min`;
 }
-
-export const currencyFormatter = new Intl.NumberFormat("pt-BR", {
-  style: "currency",
-  currency: "BRL",
-});

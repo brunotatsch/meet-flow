@@ -2,7 +2,8 @@ import { CheckCircle2 } from "lucide-react";
 import { Button } from "@web/components/button";
 import { Card, CardContent } from "@web/components/card";
 import { useBookingWizardContext } from "../use-booking-wizard-context";
-import { currencyFormatter, formatDateInZone, formatTimeInZone } from "../lib/format-time";
+import { currencyFormatter } from "@web/lib/money";
+import { formatDateInZone, formatTimeInZone } from "../lib/format-time";
 
 export function SuccessStep() {
   const { state, dispatch } = useBookingWizardContext();
