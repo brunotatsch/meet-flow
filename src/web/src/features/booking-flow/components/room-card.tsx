@@ -3,7 +3,7 @@ import type { PublicRoomResponse } from "@shared/schemas/room.schema";
 import { Badge } from "@web/components/badge";
 import { Button } from "@web/components/button";
 import { Card, CardContent, CardFooter, CardHeader, CardTitle } from "@web/components/card";
-import { currencyFormatter } from "../lib/format-time";
+import { currencyFormatter } from "@web/lib/money";
 
 export function RoomCard({
   room,

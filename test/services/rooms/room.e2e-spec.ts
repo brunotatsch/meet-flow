@@ -224,6 +224,46 @@ describe("rotas de /api/v1/rooms", () => {
       expect(updated.json()).toMatchObject({ id: roomId, capacity: 12, name: "Sala Original" });
     });
 
+    /**
+     * Regressão: `UpdateRoomSchema` herdava o `.default([])` de `amenities` via
+     * `CreateRoomSchema.partial()`, então um PATCH que só mexia em `isActive` (o
+     * que a tela de listagem do admin manda ao desativar/reativar uma sala)
+     * chegava ao caso de uso com `amenities: []` mesmo sem o cliente ter
+     * mencionado o campo, apagando as comodidades em silêncio.
+     */
+    it("preserva amenities num PATCH que só envia isActive", async () => {
+      const { cookie } = await authenticatedCompany({
+        email: "editar-parcial@exemplo.com",
+        slug: "rooms-editar-parcial",
+      });
+
+      const created = await app.inject({
+        method: "POST",
+        url: "/api/v1/rooms",
+        headers: { cookie },
+        payload: {
+          name: "Sala Com Comodidades",
+          capacity: 6,
+          hourlyRateInCents: 9_000,
+          amenities: ["projetor", "wifi"],
+        },
+      });
+      const roomId = created.json().id;
+
+      const deactivated = await app.inject({
+        method: "PATCH",
+        url: `/api/v1/rooms/${roomId}`,
+        headers: { cookie },
+        payload: { isActive: false },
+      });
+
+      expect(deactivated.statusCode).toBe(200);
+      expect(deactivated.json()).toMatchObject({
+        isActive: false,
+        amenities: ["projetor", "wifi"],
+      });
+    });
+
     it("devolve 404 ao editar sala de outra empresa", async () => {
       const owner = await authenticatedCompany({
         email: "editar-dono@exemplo.com",

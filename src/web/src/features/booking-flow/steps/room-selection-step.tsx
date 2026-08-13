@@ -7,7 +7,7 @@ import { Skeleton } from "@web/components/skeleton";
 import { api } from "@web/lib/api";
 import { useBookingWizardContext } from "../use-booking-wizard-context";
 import { RoomCard } from "../components/room-card";
-import { useKeyedFetch } from "../lib/use-keyed-fetch";
+import { useKeyedFetch } from "@web/lib/use-keyed-fetch";
 
 const RoomListSchema = z.array(PublicRoomResponseSchema);
 

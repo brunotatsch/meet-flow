@@ -55,6 +55,20 @@ describe("UpdateRoomSchema", () => {
   it("rejeita capacity inválida mesmo em update parcial", () => {
     expect(() => UpdateRoomSchema.parse({ capacity: 0 })).toThrow();
   });
+
+  /**
+   * Regressão: `.partial()` não remove o `.default([])` de `amenities` herdado
+   * de `CreateRoomSchema`, então omitir o campo resolvia para `[]` em vez de
+   * `undefined` - e `UpdateRoomUseCase` só preserva o valor atual quando o
+   * campo chega `undefined`. Um PATCH que só mudava `isActive` apagava as
+   * comodidades da sala em silêncio.
+   */
+  it("não preenche amenities com [] quando o campo é omitido", () => {
+    const result = UpdateRoomSchema.parse({ isActive: true });
+
+    expect(result.amenities).toBeUndefined();
+    expect("amenities" in result).toBe(false);
+  });
 });
 
 describe("RoomFiltersSchema", () => {

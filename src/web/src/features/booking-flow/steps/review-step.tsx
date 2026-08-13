@@ -5,7 +5,8 @@ import { Button } from "@web/components/button";
 import { Card, CardContent } from "@web/components/card";
 import { api, ApiRequestError } from "@web/lib/api";
 import { useBookingWizardContext } from "../use-booking-wizard-context";
-import { currencyFormatter, formatDateInZone, formatDurationMinutes, formatTimeInZone } from "../lib/format-time";
+import { currencyFormatter } from "@web/lib/money";
+import { formatDateInZone, formatDurationMinutes, formatTimeInZone } from "../lib/format-time";
 
 type SubmitState = { status: "idle" | "submitting" } | { status: "error"; message: string };
 

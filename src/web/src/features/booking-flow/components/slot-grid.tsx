@@ -1,6 +1,7 @@
 import type { AvailabilitySlot } from "@shared/schemas/booking.schema";
 import { cn } from "@web/lib/utils";
-import { currencyFormatter, formatTimeInZone } from "../lib/format-time";
+import { currencyFormatter } from "@web/lib/money";
+import { formatTimeInZone } from "../lib/format-time";
 
 export function SlotGrid({
   slots,
