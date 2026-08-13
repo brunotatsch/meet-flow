@@ -39,6 +39,26 @@ export const AvailabilityResponseSchema = z.object({
 export type AvailabilityResponse = z.infer<typeof AvailabilityResponseSchema>;
 
 /**
+ * Forma dos campos do passo 4, sem o `.refine` de `endsAt > startsAt`.
+ *
+ * Existe separada de `CreateBookingSchema` para o wizard público reaproveitar só
+ * o pedaço de um passo por vez - por exemplo `CreateBookingObjectSchema.pick({
+ * customerName: true, customerEmail: true, customerPhone: true })` no passo 3 -
+ * sem duplicar as regras de validação entre frontend e backend.
+ * `ZodEffects` (o tipo de `CreateBookingSchema`, depois do `.refine`) não tem
+ * `.pick`, por isso o objeto base precisa existir à parte.
+ */
+export const CreateBookingObjectSchema = z.object({
+  roomId: z.uuid(),
+  startsAt: z.iso.datetime({ offset: true }),
+  endsAt: z.iso.datetime({ offset: true }),
+  customerName: z.string().min(3).max(100),
+  customerEmail: z.email(),
+  customerPhone: z.string().optional(),
+  notes: z.string().optional(),
+});
+
+/**
  * Corpo do passo 4 do fluxo público.
  *
  * Não existe campo de preço, e isso é proposital: `z.object` descarta chaves
@@ -46,20 +66,13 @@ export type AvailabilityResponse = z.infer<typeof AvailabilityResponseSchema>;
  * removido aqui e o servidor recalcula o valor a partir da tarifa da sala.
  * `companyId` também não aparece - o tenant vem do slug da URL, nunca do corpo.
  */
-export const CreateBookingSchema = z
-  .object({
-    roomId: z.uuid(),
-    startsAt: z.iso.datetime({ offset: true }),
-    endsAt: z.iso.datetime({ offset: true }),
-    customerName: z.string().min(3).max(100),
-    customerEmail: z.email(),
-    customerPhone: z.string().optional(),
-    notes: z.string().optional(),
-  })
-  .refine((data) => new Date(data.endsAt) > new Date(data.startsAt), {
+export const CreateBookingSchema = CreateBookingObjectSchema.refine(
+  (data) => new Date(data.endsAt) > new Date(data.startsAt),
+  {
     error: "endsAt deve ser posterior a startsAt",
     path: ["endsAt"],
-  });
+  },
+);
 
 export type CreateBookingInput = z.infer<typeof CreateBookingSchema>;
 
