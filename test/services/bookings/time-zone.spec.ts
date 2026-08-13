@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
   formatIsoWithOffset,
+  nextCalendarDate,
   parseCalendarDate,
   timeZoneOffsetMinutes,
   weekdayOf,
@@ -126,5 +127,39 @@ describe("weekdayOf", () => {
     expect(weekdayOf({ year: 2026, month: 3, day: 8 })).toBe(0);
     expect(weekdayOf({ year: 2026, month: 9, day: 1 })).toBe(2);
     expect(weekdayOf({ year: 2026, month: 9, day: 5 })).toBe(6);
+  });
+});
+
+describe("nextCalendarDate", () => {
+  it("avança um dia comum", () => {
+    expect(nextCalendarDate({ year: 2026, month: 9, day: 1 })).toEqual({
+      year: 2026,
+      month: 9,
+      day: 2,
+    });
+  });
+
+  it("vira o mês no último dia", () => {
+    expect(nextCalendarDate({ year: 2026, month: 9, day: 30 })).toEqual({
+      year: 2026,
+      month: 10,
+      day: 1,
+    });
+  });
+
+  it("vira o ano em 31 de dezembro", () => {
+    expect(nextCalendarDate({ year: 2026, month: 12, day: 31 })).toEqual({
+      year: 2027,
+      month: 1,
+      day: 1,
+    });
+  });
+
+  it("atravessa 29 de fevereiro em ano bissexto", () => {
+    expect(nextCalendarDate({ year: 2028, month: 2, day: 29 })).toEqual({
+      year: 2028,
+      month: 3,
+      day: 1,
+    });
   });
 });

@@ -235,6 +235,21 @@ export function parseCalendarDate(value: string): CalendarDate | null {
   return { year, month, day };
 }
 
+/**
+ * Dia de calendário seguinte, sem fuso envolvido - dia 31 vira dia 1 do mês
+ * seguinte, dezembro vira janeiro do ano seguinte, tudo por conta do `Date.UTC`
+ * normalizar o overflow do componente `day`.
+ */
+export function nextCalendarDate(date: CalendarDate): CalendarDate {
+  const nextDay = new Date(Date.UTC(date.year, date.month - 1, date.day + 1));
+
+  return {
+    year: nextDay.getUTCFullYear(),
+    month: nextDay.getUTCMonth() + 1,
+    day: nextDay.getUTCDate(),
+  };
+}
+
 function pad(value: number, length = 2): string {
   return String(value).padStart(length, "0");
 }

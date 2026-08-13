@@ -1,15 +1,19 @@
 import type { FastifyReply, FastifyRequest } from "fastify";
-import {
-  BookingFiltersSchema,
-  type BookingFilters as BookingFiltersInput,
-} from "@shared/schemas/booking.schema";
+import { BookingFiltersSchema, DayBookingFiltersSchema } from "@shared/schemas/booking.schema";
 import type { CompanyRepository } from "@services/companies/domain/company.repository";
 import { getRequestAuth } from "@services/identity/infra/http/require-auth";
 import { HttpError } from "@services/http/http-error";
 import type { CancelBookingUseCase } from "../../application/cancel-booking.use-case";
 import type { ListBookingsUseCase } from "../../application/list-bookings.use-case";
+import { nextCalendarDate, parseCalendarDate, zonedTimeToInstant } from "../../domain/time-zone";
 import { mapBookingError } from "./booking-error";
 import { toBookingResponse } from "./booking-response";
+
+interface BookingRange {
+  from: Date;
+  to: Date;
+  roomId?: string;
+}
 
 interface BookingParams {
   Params: { id: string };
@@ -30,18 +34,13 @@ export class BookingController {
 
   async list(request: FastifyRequest, reply: FastifyReply): Promise<FastifyReply> {
     const { companyId } = getRequestAuth(request);
-    const filters = parseFilters(request.query as Record<string, unknown>);
+    const timezone = await this.timezoneOf(companyId);
+    const query = request.query as Record<string, unknown>;
+    const range = query.date !== undefined ? resolveDayRange(query, timezone) : resolveFromToRange(query);
 
     const bookings = await this.listBookingsUseCase
-      .execute({
-        companyId,
-        from: new Date(filters.from),
-        to: new Date(filters.to),
-        roomId: filters.roomId,
-      })
+      .execute({ companyId, from: range.from, to: range.to, roomId: range.roomId })
       .catch(mapBookingError);
-
-    const timezone = await this.timezoneOf(companyId);
 
     return reply.send(bookings.map((booking) => toBookingResponse(booking, timezone)));
   }
@@ -76,7 +75,7 @@ export class BookingController {
 }
 
 /** Query string chega como texto puro; a validação é o mesmo schema Zod do contrato. */
-function parseFilters(query: Record<string, unknown>): BookingFiltersInput {
+function resolveFromToRange(query: Record<string, unknown>): BookingRange {
   const parsed = BookingFiltersSchema.safeParse({
     from: query.from,
     to: query.to,
@@ -92,5 +91,35 @@ function parseFilters(query: Record<string, unknown>): BookingFiltersInput {
     );
   }
 
-  return parsed.data;
+  return { from: new Date(parsed.data.from), to: new Date(parsed.data.to), roomId: parsed.data.roomId };
+}
+
+/**
+ * Recorte de um dia de calendário só, na agenda diária do admin (MVP-12).
+ *
+ * `date` vem sem fuso - é o `timezone` da empresa da sessão, já resolvido pelo
+ * chamador, que decide onde o dia começa e termina. O mesmo `zonedTimeToInstant`
+ * usado pelo motor de disponibilidade para abrir e fechar a janela de uma sala.
+ */
+function resolveDayRange(query: Record<string, unknown>, timezone: string): BookingRange {
+  const parsed = DayBookingFiltersSchema.safeParse({
+    date: query.date,
+    ...(query.roomId === undefined ? {} : { roomId: query.roomId }),
+  });
+
+  if (!parsed.success) {
+    throw new HttpError(400, "VALIDATION_ERROR", "Filtro de dia inválido.", parsed.error.issues);
+  }
+
+  const date = parseCalendarDate(parsed.data.date);
+
+  if (!date) {
+    throw new HttpError(400, "VALIDATION_ERROR", `date "${parsed.data.date}" não existe no calendário.`);
+  }
+
+  return {
+    from: zonedTimeToInstant(timezone, date, 0),
+    to: zonedTimeToInstant(timezone, nextCalendarDate(date), 0),
+    roomId: parsed.data.roomId,
+  };
 }
