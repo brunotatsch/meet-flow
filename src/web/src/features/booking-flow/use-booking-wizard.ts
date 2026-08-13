@@ -7,17 +7,11 @@ import { api } from "@web/lib/api";
 import {
   bookingWizardReducer,
   initialBookingWizardState,
-  NAVIGABLE_STEPS,
   type BookingWizardAction,
   type BookingWizardState,
-  type WizardStep,
 } from "./booking-wizard-reducer";
 
 const RoomListSchema = z.array(PublicRoomResponseSchema);
-
-function isWizardStep(value: string | null): value is WizardStep {
-  return value !== null && (NAVIGABLE_STEPS as readonly string[]).includes(value);
-}
 
 function toSearchParams(state: BookingWizardState): URLSearchParams {
   const params = new URLSearchParams();
@@ -65,10 +59,16 @@ async function hydrateFromUrl(
   const slot = availability.slots.find((candidate) => candidate.startsAt === startsAt);
   if (!slot || !slot.available) return { step: "horario", room };
 
-  const step = isWizardStep(params.get("step")) ? (params.get("step") as WizardStep) : "dados";
-
+  /**
+   * Sempre "dados", nunca o `step` da URL: `customer` nunca é gravado na URL (é
+   * informação da pessoa que reserva, não identidade de recurso) e por isso nunca
+   * pode ser reidratado. Devolver `"revisao"` aqui deixaria `ReviewStep` com
+   * `customer: null` e o guard `if (!customer) return null` renderizaria uma tela
+   * em branco - um F5 na revisão (ou colar essa URL) precisa recuar para o passo
+   * de dados, não tentar pousar num passo que a reidratação não consegue montar.
+   */
   return {
-    step: step === "sala" || step === "horario" ? "dados" : step,
+    step: "dados",
     room,
     date,
     timezone: availability.timezone,

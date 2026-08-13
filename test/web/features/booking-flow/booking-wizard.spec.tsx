@@ -36,7 +36,7 @@ function jsonResponse(status: number, body: unknown): Response {
   return new Response(JSON.stringify(body), { status, headers: { "Content-Type": "application/json" } });
 }
 
-function renderWizard() {
+function renderWizard(initialPath = "/hotel-central/agendar") {
   const router = createMemoryRouter(
     [
       {
@@ -45,7 +45,7 @@ function renderWizard() {
         children: [{ index: true, element: <BookingWizard /> }],
       },
     ],
-    { initialEntries: ["/hotel-central/agendar"] },
+    { initialEntries: [initialPath] },
   );
 
   return render(<RouterProvider router={router} />);
@@ -185,6 +185,41 @@ describe("BookingWizard", () => {
     );
     expect(screen.getByRole("button", { name: "Continuar" })).toBeEnabled();
   });
+
+  it(
+    "reidratando com step=revisao na URL (F5 na revisão, ou link colado), " +
+      "recua para o passo de dados em vez de renderizar em branco",
+    async () => {
+      const availability = availabilityFixture();
+      const slot = availability.slots[0]!;
+
+      vi.stubGlobal(
+        "fetch",
+        vi.fn((input: string) => {
+          if (input.endsWith("/rooms")) return Promise.resolve(jsonResponse(200, [room]));
+          if (input.includes("/availability")) return Promise.resolve(jsonResponse(200, availability));
+          throw new Error(`fetch não mockado para ${input}`);
+        }),
+      );
+
+      const params = new URLSearchParams({
+        step: "revisao",
+        roomId: room.id,
+        date: availability.date,
+        startsAt: slot.startsAt,
+        endsAt: slot.endsAt,
+      });
+
+      renderWizard(`/hotel-central/agendar?${params.toString()}`);
+
+      // Nunca a tela em branco que o guard de ReviewStep produziria sem `customer`.
+      await screen.findByRole("heading", { name: "Seus dados" });
+      expect(screen.queryByRole("heading", { name: "Revise e confirme" })).not.toBeInTheDocument();
+
+      // Sala e horário foram mesmo reidratados da API, não perdidos.
+      expect(screen.queryByRole("heading", { name: "Escolha uma sala" })).not.toBeInTheDocument();
+    },
+  );
 
   it("não deixa selecionar um slot ocupado", async () => {
     const user = userEvent.setup();

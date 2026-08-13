@@ -10,7 +10,7 @@ describe("formatTimeInZone", () => {
   });
 
   it("converte corretamente entre fusos diferentes", () => {
-    // 09:00 em São Paulo (UTC-3) é 12:00 em Londres nesse período (sem horário de verão).
+    // 09:00 em São Paulo (UTC-3) é 13:00 em Londres em junho (BST, UTC+1).
     expect(formatTimeInZone("2030-06-04T09:00:00-03:00", "Europe/London")).toBe("13:00");
   });
 });

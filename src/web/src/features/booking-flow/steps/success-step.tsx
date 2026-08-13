@@ -15,7 +15,7 @@ export function SuccessStep() {
       <CheckCircle2 className="h-12 w-12 text-primary" aria-hidden="true" />
       <h1 className="mt-4 text-xl font-semibold">Reserva confirmada</h1>
       <p className="mt-1 text-sm text-muted-foreground">
-        Enviamos os detalhes para {booking.customerEmail}.
+        Guarde o código abaixo - você vai precisar dele se entrar em contato com {room.name}.
       </p>
 
       <Card className="mt-6 w-full max-w-sm text-left">
