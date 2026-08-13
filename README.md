@@ -14,24 +14,29 @@ O roteiro completo está em [`docs/plano.md`](docs/plano.md) e as decisões já 
 bun run dev
 ```
 
-Esse comando faz tudo: instala dependências, garante o `.env`, sobe o Postgres via Docker, espera o banco ficar pronto, roda as migrations e inicia a API com hot reload em `http://localhost:3000`.
+Esse comando faz tudo: instala dependências, garante o `.env`, sobe o Postgres via Docker, espera o banco ficar pronto, roda as migrations, inicia a API com hot reload em `http://localhost:3000` e o frontend (Vite) em `http://localhost:5173`.
 
 Verifique se subiu com:
 
 ```bash
-curl http://localhost:3000/health
+curl http://localhost:3000/health   # API direta
+curl http://localhost:5173/health   # mesma resposta, via proxy do Vite
 ```
+
+O proxy do Vite (`vite.web.config.ts`) cobre `/api` e `/health`: a SPA fala com a API pelo mesmo host da própria SPA, sem CORS manual em dev.
 
 ## Outros comandos
 
 ```bash
-bun run lint         # ESLint
-bun run typecheck    # tsc --noEmit
-bun run test         # testes unitários (Vitest)
-bun run test:e2e     # testes end-to-end contra o Postgres (usa .env.test)
-bun run db:generate  # gera uma migration a partir dos schemas Drizzle
-bun run db:migrate   # aplica as migrations pendentes
-bun run db:studio    # abre o Drizzle Studio
+bun run lint          # ESLint (backend e frontend)
+bun run typecheck     # tsc --noEmit (backend e frontend)
+bun run test          # testes unitários do backend (Vitest)
+bun run test:web      # testes de render dos componentes do frontend (Vitest + jsdom)
+bun run test:e2e      # testes end-to-end contra o Postgres (usa .env.test)
+bun run build:web     # build de produção da SPA em dist/web
+bun run db:generate   # gera uma migration a partir dos schemas Drizzle
+bun run db:migrate    # aplica as migrations pendentes
+bun run db:studio     # abre o Drizzle Studio
 ```
 
 `bun run test:e2e` é destrutivo: ele derruba o schema do banco apontado por `.env.test` e reaplica todas as migrations antes de rodar.
@@ -87,10 +92,15 @@ GET    /api/v1/rooms/:id/schedules          # janela de funcionamento por dia da
 PUT    /api/v1/rooms/:id/schedules          # substitui a semana inteira, em uma transação
 DELETE /api/v1/rooms/:id/schedules/:weekday # fecha um dia específico
 
+GET /api/v1/public/:companySlug                            # perfil público da empresa
+GET /api/v1/public/:companySlug/rooms                       # só salas ativas, campos públicos
 GET /api/v1/public/:companySlug/rooms/:roomId/availability?date=YYYY-MM-DD
 ```
 
-A rota de disponibilidade é pública: é o passo 2 do wizard, consumido por quem ainda não tem conta.
+As quatro rotas sob `/api/v1/public/:companySlug` (as duas acima mais as de reservas, adiante) não têm sessão: o tenant vem do slug da URL, resolvido uma única vez por um `preHandler` compartilhado, com rate limit próprio.
+O porquê e o desenho completo estão em [`docs/architecture.md`](docs/architecture.md).
+
+A rota de disponibilidade é o passo 2 do wizard, consumido por quem ainda não tem conta.
 Ela devolve a grade do dia no fuso da empresa, em ISO 8601 com offset explícito, com o preço de cada slot proporcional à tarifa horária da sala.
 
 Sala sem agenda cadastrada para aquele dia é tratada como fechada, nunca como aberta 24h.
@@ -116,11 +126,34 @@ Horário fora da janela de funcionamento, fora das bordas da grade ou já inicia
 
 Cancelar não apaga a linha: o `status` vira `cancelled`, a reserva sai do índice da constraint e o horário volta para a grade, preservando o histórico.
 
+## Frontend
+
+SPA em React 19 + React Router 7, servida pelo Vite (`vite.web.config.ts`) em dev e buildada para `dist/web` em produção - o Fastify não serve os assets, só a API.
+
+```text
+src/web/
+  index.html
+  src/
+    main.tsx, app.tsx         # bootstrap e composição de providers/router
+    index.css                 # Tailwind v4 + tokens de design (claro/escuro via classe .dark)
+    components/                # base estilo shadcn: Button, Input, Label, Card, Badge,
+                                # Skeleton, Dialog (Radix), Toast (contexto próprio)
+    layouts/                   # PublicBookingLayout (/:companySlug/agendar) e AdminLayout
+                                # (/admin/*, com guard de sessão via useSession)
+    routes/                    # árvore de rotas, página 404
+    providers/                 # ErrorBoundary
+    lib/                       # api.ts (client HTTP tipado com Zod), auth-client.ts
+```
+
+O client HTTP (`@web/lib/api`) sempre valida a resposta contra um schema de `src/shared` e converte erro HTTP em `ApiRequestError` (com `status` e o `ApiError` do backend) ou `ApiTransportError` (rede ou contrato incompatível) - nenhuma tela precisa parsear `response.json()` na mão.
+
+Testes de componente ficam em `test/web/**/*.spec.tsx`, com Testing Library sobre jsdom (`vitest.web.config.ts`), independentes da suíte de backend.
+
 ## Estrutura
 
 ```text
 src/
   shared/     # Contratos Zod, enums e tipos compartilhados entre backend e frontend
   services/   # Módulos de backend (domain / application / infra por serviço)
-  web/        # SPA React (adicionado a partir da etapa de frontend)
+  web/        # SPA React
 ```
