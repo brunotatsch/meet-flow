@@ -1,6 +1,11 @@
 import { useState, type FormEvent } from "react";
 import { useNavigate, useParams } from "react-router-dom";
-import { CreateRoomSchema, RoomResponseSchema, type RoomResponse } from "@shared/schemas/room.schema";
+import {
+  CreateRoomSchema,
+  RoomResponseSchema,
+  UpdateRoomSchema,
+  type RoomResponse,
+} from "@shared/schemas/room.schema";
 import { Button } from "@web/components/button";
 import { Input } from "@web/components/input";
 import { Label } from "@web/components/label";
@@ -79,16 +84,25 @@ export function RoomFormPage() {
   async function handleSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
 
+    /**
+     * `undefined` na criação (`CreateRoomSchema` não aceita `null` nesses dois
+     * campos), `null` na edição: é o que faz limpar a Descrição ou a URL da foto
+     * de uma sala existente e salvar realmente apagar o valor no servidor, em vez
+     * de `undefined` ser descartado do corpo do PATCH pelo `JSON.stringify` e o
+     * valor antigo sobreviver em silêncio.
+     */
     const payload = {
       name,
-      description: description || undefined,
+      description: description || (isEditing ? null : undefined),
       capacity: Number(capacity),
       hourlyRateInCents: reaisToCents(hourlyRate),
       amenities: textToAmenities(amenitiesText),
-      photoUrl: photoUrl || undefined,
+      photoUrl: photoUrl || (isEditing ? null : undefined),
     };
 
-    const parsed = CreateRoomSchema.safeParse(payload);
+    const parsed = isEditing
+      ? UpdateRoomSchema.safeParse(payload)
+      : CreateRoomSchema.safeParse(payload);
     if (!parsed.success) {
       const nextErrors: FieldErrors = {};
       for (const issue of parsed.error.issues) {

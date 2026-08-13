@@ -26,6 +26,17 @@ export type CreateRoomInput = z.infer<typeof CreateRoomSchema>;
 export const UpdateRoomSchema = CreateRoomSchema.partial().extend({
   amenities: z.array(z.string()).optional(),
   isActive: z.boolean().optional(),
+  /**
+   * `.nullable()` além do `.optional()` herdado: `undefined` continua "não mexer
+   * no campo" (`UpdateRoomUseCase` só chama `changeDescription`/`changePhotoUrl`
+   * quando o valor não é `undefined`), mas `null` agora é aceito para o caso em
+   * que o formulário de edição limpa um campo que já tinha valor. Sem isso, o
+   * único jeito de "apagar" a descrição de uma sala era mandar uma string vazia,
+   * que o client descarta do corpo do PATCH (chaves `undefined` somem no
+   * `JSON.stringify`) e o servidor nunca chega a ver a intenção de limpar.
+   */
+  description: z.string().nullable().optional(),
+  photoUrl: z.url().nullable().optional(),
 });
 
 export type UpdateRoomInput = z.infer<typeof UpdateRoomSchema>;

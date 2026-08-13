@@ -138,4 +138,70 @@ describe("RoomFormPage - edição", () => {
     expect(screen.getByLabelText("Valor por hora (R$)")).toHaveValue(120.5);
     expect(screen.getByLabelText("Comodidades")).toHaveValue("projetor, wifi");
   });
+
+  /**
+   * Regressão: salvar sem tocar em nada usa PATCH (não POST) e reenvia o
+   * objeto inteiro pré-preenchido, incluindo `amenities` - é o caminho que
+   * dispararia de novo o bug corrigido em `UpdateRoomSchema` se `amenities`
+   * voltasse a ficar de fora do payload.
+   */
+  it("ao salvar sem alterar nada, manda PATCH com os dados atuais, amenities incluído", async () => {
+    const user = userEvent.setup();
+    let patchedBody: unknown = null;
+    let patchedMethod: string | undefined;
+
+    vi.stubGlobal(
+      "fetch",
+      vi.fn((input: string, init?: RequestInit) => {
+        if (input.endsWith(`/rooms/${existingRoom.id}`) && init?.method === "PATCH") {
+          patchedMethod = init.method;
+          patchedBody = JSON.parse(init.body as string);
+          return Promise.resolve(jsonResponse(200, existingRoom));
+        }
+        if (input.endsWith(`/rooms/${existingRoom.id}`)) return Promise.resolve(jsonResponse(200, existingRoom));
+        throw new Error(`fetch não mockado para ${input}`);
+      }),
+    );
+
+    renderEditPage();
+    await waitFor(() => expect(screen.getByLabelText("Nome")).toHaveValue("Sala Atlântico"));
+
+    await user.click(screen.getByRole("button", { name: "Salvar" }));
+
+    await screen.findByText("Lista de salas");
+    expect(patchedMethod).toBe("PATCH");
+    expect(patchedBody).toMatchObject({
+      name: "Sala Atlântico",
+      description: "Vista para o mar",
+      capacity: 10,
+      hourlyRateInCents: 12_050,
+      amenities: ["projetor", "wifi"],
+    });
+  });
+
+  it("ao limpar a descrição e salvar, manda null (não omite o campo)", async () => {
+    const user = userEvent.setup();
+    let patchedBody: unknown = null;
+
+    vi.stubGlobal(
+      "fetch",
+      vi.fn((input: string, init?: RequestInit) => {
+        if (input.endsWith(`/rooms/${existingRoom.id}`) && init?.method === "PATCH") {
+          patchedBody = JSON.parse(init.body as string);
+          return Promise.resolve(jsonResponse(200, { ...existingRoom, description: null }));
+        }
+        if (input.endsWith(`/rooms/${existingRoom.id}`)) return Promise.resolve(jsonResponse(200, existingRoom));
+        throw new Error(`fetch não mockado para ${input}`);
+      }),
+    );
+
+    renderEditPage();
+    await waitFor(() => expect(screen.getByLabelText("Descrição")).toHaveValue("Vista para o mar"));
+
+    await user.clear(screen.getByLabelText("Descrição"));
+    await user.click(screen.getByRole("button", { name: "Salvar" }));
+
+    await screen.findByText("Lista de salas");
+    expect(patchedBody).toMatchObject({ description: null });
+  });
 });
