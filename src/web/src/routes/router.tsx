@@ -1,4 +1,5 @@
 import { createBrowserRouter } from "react-router-dom";
+import { AgendaPage } from "@web/features/admin-agenda/agenda-page";
 import { RoomFormPage } from "@web/features/admin-rooms/room-form-page";
 import { RoomListPage } from "@web/features/admin-rooms/room-list-page";
 import { RoomSchedulePage } from "@web/features/admin-rooms/room-schedule-page";
@@ -22,6 +23,7 @@ export const router = createBrowserRouter([
       { path: "rooms/new", element: <RoomFormPage /> },
       { path: "rooms/:id/edit", element: <RoomFormPage /> },
       { path: "rooms/:id/schedule", element: <RoomSchedulePage /> },
+      { path: "agenda", element: <AgendaPage /> },
     ],
   },
   {
