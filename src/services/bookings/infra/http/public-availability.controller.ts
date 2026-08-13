@@ -1,6 +1,6 @@
 import type { FastifyReply, FastifyRequest } from "fastify";
+import { getPublicCompany } from "@services/companies/infra/http/resolve-company-slug";
 import { AvailabilityQuerySchema } from "@shared/schemas/booking.schema";
-import type { CompanyRepository } from "@services/companies/domain/company.repository";
 import { HttpError } from "@services/http/http-error";
 import type { CheckAvailabilityUseCase } from "../../application/check-availability.use-case";
 import { mapBookingError } from "./booking-error";
@@ -11,18 +11,17 @@ interface AvailabilityRequest {
 }
 
 /**
- * Fluxo público do wizard: sem sessão, identificado só pelo slug da empresa na URL.
+ * Passo 2 do wizard: sem sessão, identificado só pelo slug da empresa na URL.
  *
- * O slug é a única identificação de tenant aceita do cliente em todo o backend, e
- * ela vale exclusivamente aqui. A partir dele resolvemos o `companyId` no banco e
- * toda a consulta segue filtrada por esse id - o cliente nunca escolhe o tenant de
- * uma rota autenticada. Ver `docs/architecture.md`.
+ * O `companyId` já chega resolvido em `request.publicCompany`, preenchido pelo
+ * `preHandler` único do plugin `/public/:companySlug` (ver
+ * `@services/companies/infra/http/resolve-company-slug`). Sala inexistente, de
+ * outra empresa ou inativa respondem o mesmo 404 de `ROOM_NOT_FOUND` - a distinção
+ * fica só no domínio, nunca na borda pública, para não transformar o endpoint em
+ * oráculo de salas alheias. Ver `docs/architecture.md`.
  */
 export class PublicAvailabilityController {
-  constructor(
-    private readonly companyRepository: CompanyRepository,
-    private readonly checkAvailabilityUseCase: CheckAvailabilityUseCase,
-  ) {}
+  constructor(private readonly checkAvailabilityUseCase: CheckAvailabilityUseCase) {}
 
   async availability(
     request: FastifyRequest<AvailabilityRequest>,
@@ -42,16 +41,7 @@ export class PublicAvailabilityController {
       );
     }
 
-    const company = await this.companyRepository.findBySlug(request.params.companySlug);
-
-    /**
-     * Empresa inexistente e sala inexistente respondem o mesmo 404 de recursos
-     * distintos, mas nenhuma das duas revela se a outra existe: quem varre slugs
-     * não consegue distinguir "empresa não existe" de "empresa existe e a sala não".
-     */
-    if (!company) {
-      throw new HttpError(404, "COMPANY_NOT_FOUND", "Empresa não encontrada.");
-    }
+    const company = getPublicCompany(request);
 
     const availability = await this.checkAvailabilityUseCase
       .execute({ companyId: company.id, roomId: parsed.data.roomId, date: parsed.data.date })
