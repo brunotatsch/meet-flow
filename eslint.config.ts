@@ -70,18 +70,6 @@ export default tseslint.config(
       "react-refresh": reactRefresh,
       "jsx-a11y": jsxA11y,
     },
-    languageOptions: {
-      globals: {
-        window: "readonly",
-        document: "readonly",
-        crypto: "readonly",
-        fetch: "readonly",
-        console: "readonly",
-        setTimeout: "readonly",
-        AbortSignal: "readonly",
-        Response: "readonly",
-      },
-    },
     rules: {
       ...reactHooks.configs.recommended.rules,
       ...jsxA11y.flatConfigs.recommended.rules,
