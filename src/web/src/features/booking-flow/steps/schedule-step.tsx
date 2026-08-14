@@ -5,6 +5,7 @@ import { Input } from "@web/components/input";
 import { Label } from "@web/components/label";
 import { Skeleton } from "@web/components/skeleton";
 import { api } from "@web/lib/api";
+import { todayIsoDate } from "@web/lib/format-time";
 import { useBookingWizardContext } from "../use-booking-wizard-context";
 import { SlotGrid } from "../components/slot-grid";
 import { currencyFormatter } from "@web/lib/money";
@@ -14,10 +15,6 @@ import { toggleSlotSelection, totalPriceInCents } from "../lib/slot-selection";
 interface Availability {
   slots: AvailabilitySlot[];
   timezone: string;
-}
-
-function todayIsoDate(): string {
-  return new Date().toISOString().slice(0, 10);
 }
 
 export function ScheduleStep() {

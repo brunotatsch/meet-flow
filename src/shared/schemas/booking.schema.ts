@@ -94,6 +94,22 @@ export const BookingFiltersSchema = z
 
 export type BookingFilters = z.infer<typeof BookingFiltersSchema>;
 
+/**
+ * Recorte de um dia só, para a agenda diária do admin (MVP-12).
+ *
+ * Alternativa a `BookingFiltersSchema`: em vez de o cliente calcular `from`/`to`
+ * em ISO com offset (o que exigiria saber o fuso da empresa e acertar a virada de
+ * horário de verão na mão), ele manda só a data de calendário e o servidor resolve
+ * o instante inicial e final usando `zonedTimeToInstant`, a mesma aritmética de
+ * fuso que o motor de disponibilidade já usa.
+ */
+export const DayBookingFiltersSchema = z.object({
+  date: z.iso.date(),
+  roomId: z.uuid().optional(),
+});
+
+export type DayBookingFilters = z.infer<typeof DayBookingFiltersSchema>;
+
 export const BookingResponseSchema = z.object({
   id: z.uuid(),
   companyId: z.uuid(),

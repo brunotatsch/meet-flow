@@ -397,6 +397,110 @@ describe("GET /api/v1/bookings", () => {
   });
 });
 
+/**
+ * MVP-12: alternativa a `from`/`to` pensada para a agenda diária do admin - o
+ * cliente manda só a data de calendário, sem calcular offset nem virada de
+ * horário de verão na mão.
+ */
+describe("GET /api/v1/bookings?date=", () => {
+  it("lista as reservas do dia da empresa autenticada, sem vazar a de outro tenant", async () => {
+    await book(hotel);
+    expect((await book(coworking)).statusCode).toBe(201);
+
+    const response = await app.inject({
+      method: "GET",
+      url: "/api/v1/bookings?date=2030-06-04",
+      headers: { cookie: hotel.cookie },
+    });
+
+    expect(response.statusCode).toBe(200);
+    const body = response.json();
+    expect(body).toHaveLength(1);
+    expect(body[0]).toMatchObject({ companyId: hotel.companyId, startsAt: NINE });
+  });
+
+  it("recorta pela data pedida, ignorando reservas de outros dias", async () => {
+    await book(hotel);
+
+    const sameDay = await app.inject({
+      method: "GET",
+      url: "/api/v1/bookings?date=2030-06-04",
+      headers: { cookie: hotel.cookie },
+    });
+    const otherDay = await app.inject({
+      method: "GET",
+      url: "/api/v1/bookings?date=2030-06-05",
+      headers: { cookie: hotel.cookie },
+    });
+
+    expect(sameDay.json()).toHaveLength(1);
+    expect(otherDay.json()).toHaveLength(0);
+  });
+
+  it("combina com roomId", async () => {
+    await book(hotel);
+    await book(hotel, { startsAt: ELEVEN, endsAt: NOON });
+
+    const response = await app.inject({
+      method: "GET",
+      url: `/api/v1/bookings?date=2030-06-04&roomId=${hotel.roomId}`,
+      headers: { cookie: hotel.cookie },
+    });
+
+    expect(response.json()).toHaveLength(2);
+  });
+
+  it("devolve 400 para data malformada ou inexistente no calendário", async () => {
+    const malformed = await app.inject({
+      method: "GET",
+      url: "/api/v1/bookings?date=04-06-2030",
+      headers: { cookie: hotel.cookie },
+    });
+    const nonexistent = await app.inject({
+      method: "GET",
+      url: "/api/v1/bookings?date=2030-02-30",
+      headers: { cookie: hotel.cookie },
+    });
+
+    expect(malformed.statusCode).toBe(400);
+    expect(nonexistent.statusCode).toBe(400);
+  });
+
+  /**
+   * A reserva que cruza a virada do dia aparece nos dois dias que ela toca: é a
+   * mesma semântica de sobreposição que `listActivePeriods` já usa no motor de
+   * disponibilidade, e é o que faz uma reserva das 23h à 1h não desaparecer da
+   * agenda de nenhum dos dois dias que ela ocupa de verdade.
+   */
+  it("uma reserva que cruza a meia-noite aparece nos dois dias que ela toca", async () => {
+    await database.db.insert(bookings).values({
+      companyId: hotel.companyId,
+      roomId: hotel.roomId,
+      customerName: "Ana Prado",
+      customerEmail: "ana@exemplo.com",
+      startsAt: new Date("2030-06-04T23:00:00-03:00"),
+      endsAt: new Date("2030-06-05T01:00:00-03:00"),
+      status: "confirmed",
+      totalInCents: 24_000,
+    });
+
+    const firstDay = await app.inject({
+      method: "GET",
+      url: "/api/v1/bookings?date=2030-06-04",
+      headers: { cookie: hotel.cookie },
+    });
+    const secondDay = await app.inject({
+      method: "GET",
+      url: "/api/v1/bookings?date=2030-06-05",
+      headers: { cookie: hotel.cookie },
+    });
+
+    expect(firstDay.json()).toHaveLength(1);
+    expect(secondDay.json()).toHaveLength(1);
+    expect(firstDay.json()[0].id).toBe(secondDay.json()[0].id);
+  });
+});
+
 describe("DELETE /api/v1/bookings/:id", () => {
   it("responde 401 sem sessão", async () => {
     const created = await book(hotel);
