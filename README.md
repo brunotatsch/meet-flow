@@ -45,6 +45,11 @@ Existe uma trava que aborta a execução se o banco não terminar com `_test`.
 `bun run db:studio` depende de um driver Node (`pg` ou `postgres`), que o projeto não instala.
 O restante do fluxo de banco usa o driver nativo do Bun.
 
+## CI
+
+Todo push e pull request para `main` roda em [`.github/workflows/ci.yml`](.github/workflows/ci.yml), com quatro jobs em paralelo: `lint`, `typecheck`, `test` (unitários de backend e de frontend) e `test-e2e` (contra um Postgres efêmero de serviço, nas mesmas credenciais de `.env.test`).
+Não há passo manual: o job de e2e sobe o banco, aplica as migrations do zero e roda a suíte, exatamente como localmente.
+
 ## Banco de dados
 
 O schema vive junto de cada serviço, em `src/services/<serviço>/infra/database/schema/`, e o `drizzle.config.ts` os varre por glob.
