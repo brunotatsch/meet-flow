@@ -122,6 +122,7 @@ describe("fluxo crítico ponta a ponta", () => {
       headers: { cookie: hotel.cookie },
     });
     expect(agenda.statusCode).toBe(200);
+    expect(agenda.json()).toHaveLength(1);
     expect(agenda.json()).toContainEqual(
       expect.objectContaining({
         id: bookingId,
@@ -174,6 +175,7 @@ describe("fluxo crítico ponta a ponta", () => {
       url: `/api/v1/bookings?date=${DATE}`,
       headers: { cookie: hotel.cookie },
     });
+    expect(agendaAfterCancel.json()).toHaveLength(1);
     expect(agendaAfterCancel.json()).toContainEqual(
       expect.objectContaining({ id: bookingId, status: "cancelled" }),
     );
