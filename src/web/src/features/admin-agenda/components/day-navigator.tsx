@@ -1,7 +1,7 @@
 import { ChevronLeft, ChevronRight } from "lucide-react";
 import { Button } from "@web/components/button";
 import { Input } from "@web/components/input";
-import { shiftIsoDate, todayIsoDate } from "@web/lib/format-time";
+import { shiftIsoDate, todayIsoDateInZone } from "@web/lib/format-time";
 
 export function DayNavigator({
   date,
@@ -37,7 +37,7 @@ export function DayNavigator({
       >
         <ChevronRight className="h-4 w-4" aria-hidden="true" />
       </Button>
-      <Button variant="outline" size="sm" onClick={() => onChange(todayIsoDate())}>
+      <Button variant="outline" size="sm" onClick={() => onChange(todayIsoDateInZone(timezone))}>
         Hoje
       </Button>
       <span className="text-sm text-muted-foreground">Horários em {timezone}</span>

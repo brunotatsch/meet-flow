@@ -12,13 +12,7 @@ import {
 } from "@web/components/dialog";
 import { currencyFormatter } from "@web/lib/money";
 import { formatDateInZone, formatTimeInZone } from "@web/lib/format-time";
-
-const STATUS_LABEL: Record<BookingResponse["status"], string> = {
-  pending: "Pendente",
-  confirmed: "Confirmada",
-  cancelled: "Cancelada",
-  completed: "Concluída",
-};
+import { STATUS_LABEL } from "../lib/booking-status";
 
 export function BookingDetailPanel({
   booking,
@@ -35,14 +29,33 @@ export function BookingDetailPanel({
   onCancelBooking: (booking: BookingResponse) => void;
   cancelling: boolean;
 }) {
-  const [confirmingCancel, setConfirmingCancel] = useState(false);
+  /**
+   * Guardado pelo id da reserva, não por um booleano solto: o painel é uma única
+   * instância reaproveitada para todas as reservas (sem `key` por `booking.id`), e
+   * um booleano sobreviveria à troca de reserva selecionada. Fechar com sucesso
+   * troca `booking` para `null` fora do `onOpenChange` do Radix (só dispara em
+   * fechamento iniciado por ele - Escape, clique fora), então um reset manual ali
+   * não bastava: ao abrir a reserva seguinte, a etapa de confirmação já aparecia
+   * pré-marcada para ela.
+   */
+  /**
+   * Guardado pelo id da reserva, não por um booleano solto: o painel é uma única
+   * instância reaproveitada para todas as reservas (sem `key` por `booking.id`), e
+   * um booleano sobreviveria à troca de reserva selecionada. Fechar com sucesso
+   * troca `booking` para `null` fora do `onOpenChange` do Radix (só dispara em
+   * fechamento iniciado por ele - Escape, clique fora), então um reset manual ali
+   * não bastava: ao abrir a reserva seguinte, a etapa de confirmação já aparecia
+   * pré-marcada para ela.
+   */
+  const [confirmingCancelId, setConfirmingCancelId] = useState<string | null>(null);
+  const confirmingCancel = booking !== null && confirmingCancelId === booking.id;
 
   return (
     <Dialog
       open={booking !== null}
       onOpenChange={(open) => {
         if (!open) {
-          setConfirmingCancel(false);
+          setConfirmingCancelId(null);
           onClose();
         }
       }}
@@ -96,7 +109,7 @@ export function BookingDetailPanel({
                 <div className="flex flex-col gap-2 rounded-md border border-destructive/50 bg-destructive/10 p-3">
                   <p className="text-sm text-destructive">Cancelar esta reserva? Não pode ser desfeito.</p>
                   <div className="flex justify-end gap-2">
-                    <Button variant="outline" size="sm" onClick={() => setConfirmingCancel(false)}>
+                    <Button variant="outline" size="sm" onClick={() => setConfirmingCancelId(null)}>
                       Voltar
                     </Button>
                     <Button
@@ -110,7 +123,7 @@ export function BookingDetailPanel({
                   </div>
                 </div>
               ) : (
-                <Button variant="destructive" onClick={() => setConfirmingCancel(true)}>
+                <Button variant="destructive" onClick={() => setConfirmingCancelId(booking.id)}>
                   Cancelar reserva
                 </Button>
               )}

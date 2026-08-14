@@ -88,6 +88,16 @@ export function todayIsoDate(): string {
   return `${year}-${month}-${day}`;
 }
 
+/**
+ * Data de hoje (`YYYY-MM-DD`) **no fuso informado**, para o botão "Hoje" da agenda
+ * administrativa (MVP-12): ali o fuso da empresa já é conhecido, e usar o fuso do
+ * navegador faria o botão abrir o dia errado sempre que os dois divergirem por
+ * algumas horas ao redor da meia-noite.
+ */
+export function todayIsoDateInZone(timeZone: string): string {
+  return calendarDateStringInZone(new Date().toISOString(), timeZone);
+}
+
 /** Desloca uma data de calendário (`YYYY-MM-DD`) em `days` dias, sem fuso envolvido. */
 export function shiftIsoDate(date: string, days: number): string {
   const [year, month, day] = date.split("-").map(Number) as [number, number, number];

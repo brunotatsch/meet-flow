@@ -1,9 +1,10 @@
-import { describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import {
   calendarDateStringInZone,
   formatDurationMinutes,
   formatTimeInZone,
   minutesFromMidnightInZone,
+  todayIsoDateInZone,
 } from "@web/lib/format-time";
 
 describe("formatTimeInZone", () => {
@@ -68,5 +69,27 @@ describe("calendarDateStringInZone", () => {
     expect(calendarDateStringInZone("2030-06-04T23:30:00-03:00", "Europe/London")).toBe(
       "2030-06-05",
     );
+  });
+});
+
+describe("todayIsoDateInZone", () => {
+  afterEach(() => {
+    vi.useRealTimers();
+  });
+
+  it("usa a data do fuso informado, não a data UTC do relógio do sistema", () => {
+    // 2030-06-05T01:00:00Z já é dia 5 em UTC, mas ainda é 22h do dia 4 em São Paulo.
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date("2030-06-05T01:00:00Z"));
+
+    expect(todayIsoDateInZone("America/Sao_Paulo")).toBe("2030-06-04");
+  });
+
+  it("avança o dia num fuso à frente de UTC antes da meia-noite UTC", () => {
+    // 2030-06-04T23:30:00Z ainda é dia 4 em UTC, mas já é 00:30 do dia 5 em Londres.
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date("2030-06-04T23:30:00Z"));
+
+    expect(todayIsoDateInZone("Europe/London")).toBe("2030-06-05");
   });
 });

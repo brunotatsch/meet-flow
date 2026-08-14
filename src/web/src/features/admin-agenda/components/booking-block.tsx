@@ -1,18 +1,12 @@
 import type { BookingResponse } from "@shared/schemas/booking.schema";
 import { cn } from "@web/lib/utils";
 import { formatTimeInZone } from "@web/lib/format-time";
+import { STATUS_LABEL } from "../lib/booking-status";
 import { bookingBlockPosition } from "../lib/position";
 
 /** Altura de uma hora na linha do tempo. 48 é múltiplo de 60, então todo slot de 15min cai em pixel inteiro. */
 export const PIXELS_PER_HOUR = 48;
 const PIXELS_PER_MINUTE = PIXELS_PER_HOUR / 60;
-
-const STATUS_LABEL: Record<BookingResponse["status"], string> = {
-  pending: "Pendente",
-  confirmed: "Confirmada",
-  cancelled: "Cancelada",
-  completed: "Concluída",
-};
 
 const STATUS_CLASSES: Record<BookingResponse["status"], string> = {
   pending: "border-yellow-600/50 bg-yellow-500/15 text-yellow-900 dark:text-yellow-200",

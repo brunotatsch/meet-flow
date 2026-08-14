@@ -1,4 +1,4 @@
-import { render, screen, waitFor } from "@testing-library/react";
+import { render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { MemoryRouter } from "react-router-dom";
@@ -168,6 +168,45 @@ describe("AgendaPage", () => {
     await waitFor(() => expect(deleteCalled).toBe(true));
     expect(await screen.findByText("Reserva cancelada")).toBeInTheDocument();
     expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
+  });
+
+  it("não reaproveita a confirmação de cancelamento de uma reserva para a próxima que for aberta", async () => {
+    const user = userEvent.setup();
+    const bookingA = bookingFixture();
+    const bookingB = bookingFixture({
+      id: "66666666-6666-4666-8666-666666666666",
+      customerName: "Beatriz Lima",
+      startsAt: `${TODAY}T11:00:00-03:00`,
+      endsAt: `${TODAY}T12:00:00-03:00`,
+    });
+
+    vi.stubGlobal(
+      "fetch",
+      vi.fn((input: string, init?: RequestInit) => {
+        if (input.endsWith("/me")) return Promise.resolve(jsonResponse(200, session));
+        if (input.endsWith("/rooms")) return Promise.resolve(jsonResponse(200, [roomAtlantico]));
+        if (input.endsWith(`/bookings/${bookingA.id}`) && init?.method === "DELETE") {
+          return Promise.resolve(jsonResponse(200, { ...bookingA, status: "cancelled" }));
+        }
+        if (input.includes("/bookings?date=")) {
+          return Promise.resolve(jsonResponse(200, [bookingA, bookingB]));
+        }
+        throw new Error(`fetch não mockado para ${input}`);
+      }),
+    );
+
+    renderPage();
+
+    await user.click(await screen.findByText("Ana Prado"));
+    await user.click(screen.getByRole("button", { name: "Cancelar reserva" }));
+    await user.click(screen.getByRole("button", { name: "Confirmar cancelamento" }));
+    await waitFor(() => expect(screen.queryByRole("dialog")).not.toBeInTheDocument());
+
+    await user.click(await screen.findByText("Beatriz Lima"));
+    const panel = await screen.findByRole("dialog");
+
+    expect(within(panel).getByRole("button", { name: "Cancelar reserva" })).toBeInTheDocument();
+    expect(within(panel).queryByRole("button", { name: "Confirmar cancelamento" })).not.toBeInTheDocument();
   });
 
   it("navega para o dia seguinte e busca a agenda de novo", async () => {
