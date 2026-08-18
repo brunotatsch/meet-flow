@@ -24,6 +24,15 @@ export const auth = betterAuth({
   appName: "meet-flow",
   baseURL: env.BETTER_AUTH_URL,
   secret: env.BETTER_AUTH_SECRET,
+  /**
+   * `APP_URL` é a origem da SPA, não a da API (`BETTER_AUTH_URL`). Em dev elas
+   * divergem porque o Vite serve o frontend em `:5173` e faz proxy de `/api` para
+   * a API em `:3000` (ver `vite.web.config.ts`): o `Origin` que chega ao Better
+   * Auth é sempre `:5173`, e sem esta lista todo `sign-in`/`sign-up` do browser
+   * cai em `403 INVALID_ORIGIN`. Em produção, onde reverse proxy serve os dois na
+   * mesma origem, `APP_URL` coincide com `BETTER_AUTH_URL` e a entrada é inócua.
+   */
+  trustedOrigins: [env.APP_URL],
   database: drizzleAdapter(db, {
     provider: "pg",
     schema,
