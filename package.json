@@ -19,7 +19,8 @@
     "test:e2e": "bun --bun vitest run --config vitest.e2e.config.ts",
     "db:generate": "drizzle-kit generate",
     "db:migrate": "bash scripts/migration-run.sh",
-    "db:studio": "drizzle-kit studio"
+    "db:studio": "drizzle-kit studio",
+    "db:seed": "bun run scripts/seed-dev.ts"
   },
   "dependencies": {
     "@fastify/rate-limit": "^11.2.0",
