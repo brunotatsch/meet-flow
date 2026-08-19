@@ -7,9 +7,11 @@ import { CompanyNotFoundError } from "@services/companies/domain/errors";
 import { RoomNotFoundError } from "@services/rooms/domain/errors";
 import { RoomSchedule } from "@services/rooms/domain/room-schedule.entity";
 import { Room } from "@services/rooms/domain/room.entity";
+import { RoomBlock } from "@services/room-blocks/domain/room-block.entity";
 import { InMemoryCompanyRepository } from "../companies/in-memory-company.repository";
 import { InMemoryRoomScheduleRepository } from "../rooms/in-memory-room-schedule.repository";
 import { InMemoryRoomRepository } from "../rooms/in-memory-room.repository";
+import { InMemoryRoomBlockRepository } from "../room-blocks/in-memory-room-block.repository";
 import { FixedClock } from "./fixed-clock";
 import { InMemoryBookingRepository } from "./in-memory-booking.repository";
 
@@ -28,12 +30,13 @@ let companies: InMemoryCompanyRepository;
 let rooms: InMemoryRoomRepository;
 let schedules: InMemoryRoomScheduleRepository;
 let bookings: InMemoryBookingRepository;
+let blocks: InMemoryRoomBlockRepository;
 let clock: FixedClock;
 let useCase: CheckAvailabilityUseCase;
 let room: Room;
 
 function buildUseCase(): CheckAvailabilityUseCase {
-  return new CheckAvailabilityUseCase(companies, rooms, schedules, bookings, clock);
+  return new CheckAvailabilityUseCase(companies, rooms, schedules, bookings, blocks, clock);
 }
 
 async function scheduleTuesday(
@@ -85,6 +88,7 @@ beforeEach(async () => {
 
   schedules = new InMemoryRoomScheduleRepository();
   bookings = new InMemoryBookingRepository();
+  blocks = new InMemoryRoomBlockRepository();
   clock = new FixedClock(BEFORE_EVERYTHING);
   useCase = buildUseCase();
 });
@@ -184,6 +188,28 @@ describe("CheckAvailabilityUseCase", () => {
     await scheduleTuesday();
     // 10:30 às 10:45: pega metade do slot das 10h e nada dos vizinhos.
     bookedAt("2026-09-01T13:30:00Z", "2026-09-01T13:45:00Z");
+
+    const { slots } = await useCase.execute({
+      companyId: COMPANY_ID,
+      roomId: room.id,
+      date: TUESDAY,
+    });
+
+    expect(slots.map((slot) => slot.available)).toEqual([true, false, true]);
+  });
+
+  it("remove da disponibilidade pública os períodos bloqueados pela operação", async () => {
+    await scheduleTuesday();
+    await blocks.createSeries([
+      RoomBlock.create({
+        companyId: COMPANY_ID,
+        roomId: room.id,
+        startsAt: new Date("2026-09-01T13:30:00Z"),
+        endsAt: new Date("2026-09-01T13:45:00Z"),
+        reason: "Manutenção preventiva",
+        createdBy: "operator-id",
+      }),
+    ]);
 
     const { slots } = await useCase.execute({
       companyId: COMPANY_ID,

@@ -39,7 +39,10 @@ const inactiveRoom = {
 };
 
 function jsonResponse(status: number, body: unknown): Response {
-  return new Response(JSON.stringify(body), { status, headers: { "Content-Type": "application/json" } });
+  return new Response(JSON.stringify(body), {
+    status,
+    headers: { "Content-Type": "application/json" },
+  });
 }
 
 function renderPage() {
@@ -62,7 +65,8 @@ describe("RoomListPage", () => {
       "fetch",
       vi.fn((input: string) => {
         if (input.endsWith("/me")) return Promise.resolve(jsonResponse(200, session));
-        if (input.endsWith("/rooms")) return Promise.resolve(jsonResponse(200, [activeRoom, inactiveRoom]));
+        if (input.endsWith("/rooms"))
+          return Promise.resolve(jsonResponse(200, [activeRoom, inactiveRoom]));
         throw new Error(`fetch não mockado para ${input}`);
       }),
     );
@@ -83,7 +87,8 @@ describe("RoomListPage", () => {
       "fetch",
       vi.fn((input: string) => {
         if (input.endsWith("/me")) return Promise.resolve(jsonResponse(200, session));
-        if (input.endsWith("/rooms")) return Promise.resolve(jsonResponse(200, [activeRoom, inactiveRoom]));
+        if (input.endsWith("/rooms"))
+          return Promise.resolve(jsonResponse(200, [activeRoom, inactiveRoom]));
         throw new Error(`fetch não mockado para ${input}`);
       }),
     );
@@ -149,7 +154,10 @@ describe("RoomListPage", () => {
       "fetch",
       vi.fn((input: string) => {
         if (input.endsWith("/me")) return Promise.resolve(jsonResponse(200, session));
-        if (input.endsWith("/rooms")) return Promise.resolve(jsonResponse(500, { code: "INTERNAL_ERROR", message: "Erro interno." }));
+        if (input.endsWith("/rooms"))
+          return Promise.resolve(
+            jsonResponse(500, { code: "INTERNAL_ERROR", message: "Erro interno." }),
+          );
         throw new Error(`fetch não mockado para ${input}`);
       }),
     );
@@ -157,7 +165,32 @@ describe("RoomListPage", () => {
     renderPage();
 
     expect(
-      await screen.findByText("Não foi possível carregar as salas. Recarregue a página para tentar de novo."),
+      await screen.findByText(
+        "Não foi possível carregar as salas. Recarregue a página para tentar de novo.",
+      ),
     ).toBeInTheDocument();
+  });
+
+  it("staff não vê ações de criar, editar ou ativar/desativar sala", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn((input: string) => {
+        if (input.endsWith("/me")) {
+          return Promise.resolve(jsonResponse(200, { ...session, role: "staff" }));
+        }
+        if (input.endsWith("/rooms")) {
+          return Promise.resolve(jsonResponse(200, [activeRoom, inactiveRoom]));
+        }
+        throw new Error(`fetch não mockado para ${input}`);
+      }),
+    );
+
+    renderPage();
+    await screen.findByText("Sala Atlântico");
+
+    expect(screen.queryByRole("link", { name: "Nova sala" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("link", { name: "Editar" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Desativar" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Ativar" })).not.toBeInTheDocument();
   });
 });

@@ -18,6 +18,7 @@ export const bookingStatus = pgEnum("booking_status", [
   "confirmed",
   "cancelled",
   "completed",
+  "no_show",
 ]);
 
 /**
@@ -45,6 +46,14 @@ export const bookings = pgTable(
     status: bookingStatus().notNull().default("pending"),
     totalInCents: integer().notNull(),
     notes: text(),
+    /** Hold durável do Checkout. Nulo apenas para reservas legadas/importadas. */
+    expiresAt: timestamp({ withTimezone: true }),
+    stripeCheckoutSessionId: text().unique(),
+    stripePaymentIntentId: text().unique(),
+    confirmedAt: timestamp({ withTimezone: true }),
+    cancellationReason: text(),
+    checkedInAt: timestamp({ withTimezone: true }),
+    checkedOutAt: timestamp({ withTimezone: true }),
     createdAt: timestamp({ withTimezone: true }).notNull().defaultNow(),
     updatedAt: timestamp({ withTimezone: true })
       .notNull()
@@ -63,7 +72,12 @@ export const bookings = pgTable(
     }).onDelete("restrict"),
     index("bookings_company_id_starts_at_idx").on(table.companyId, table.startsAt),
     index("bookings_room_id_starts_at_idx").on(table.roomId, table.startsAt),
+    index("bookings_pending_expires_at_idx").on(table.expiresAt),
     check("bookings_period_valid", sql`${table.endsAt} > ${table.startsAt}`),
     check("bookings_total_non_negative", sql`${table.totalInCents} >= 0`),
+    check(
+      "bookings_pending_requires_expiration",
+      sql`${table.status} <> 'pending' OR ${table.expiresAt} IS NOT NULL`,
+    ),
   ],
 );

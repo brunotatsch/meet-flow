@@ -91,3 +91,44 @@ CREATE UNIQUE INDEX "organization_slug_uidx" ON "organization" USING btree ("slu
 CREATE INDEX "session_userId_idx" ON "session" USING btree ("user_id");--> statement-breakpoint
 CREATE INDEX "verification_identifier_idx" ON "verification" USING btree ("identifier");--> statement-breakpoint
 ALTER TABLE "companies" ADD CONSTRAINT "companies_organization_id_organization_id_fk" FOREIGN KEY ("organization_id") REFERENCES "public"."organization"("id") ON DELETE cascade ON UPDATE no action;
+--> statement-breakpoint
+-- O backend acessa o Postgres pelo wire protocol. A Data API do Supabase não
+-- deve expor tabelas de negócio e, principalmente, credenciais do Better Auth.
+ALTER TABLE "account" ENABLE ROW LEVEL SECURITY;--> statement-breakpoint
+ALTER TABLE "bookings" ENABLE ROW LEVEL SECURITY;--> statement-breakpoint
+ALTER TABLE "companies" ENABLE ROW LEVEL SECURITY;--> statement-breakpoint
+ALTER TABLE "invitation" ENABLE ROW LEVEL SECURITY;--> statement-breakpoint
+ALTER TABLE "member" ENABLE ROW LEVEL SECURITY;--> statement-breakpoint
+ALTER TABLE "organization" ENABLE ROW LEVEL SECURITY;--> statement-breakpoint
+ALTER TABLE "room_schedules" ENABLE ROW LEVEL SECURITY;--> statement-breakpoint
+ALTER TABLE "rooms" ENABLE ROW LEVEL SECURITY;--> statement-breakpoint
+ALTER TABLE "session" ENABLE ROW LEVEL SECURITY;--> statement-breakpoint
+ALTER TABLE "user" ENABLE ROW LEVEL SECURITY;--> statement-breakpoint
+ALTER TABLE "verification" ENABLE ROW LEVEL SECURITY;--> statement-breakpoint
+DO $$
+DECLARE
+  api_role text;
+BEGIN
+  FOREACH api_role IN ARRAY ARRAY['anon', 'authenticated', 'service_role']
+  LOOP
+    IF EXISTS (SELECT 1 FROM pg_roles WHERE rolname = api_role) THEN
+      EXECUTE format(
+        'REVOKE ALL PRIVILEGES ON ALL TABLES IN SCHEMA public FROM %I',
+        api_role
+      );
+      EXECUTE format(
+        'REVOKE ALL PRIVILEGES ON ALL SEQUENCES IN SCHEMA public FROM %I',
+        api_role
+      );
+      EXECUTE format(
+        'ALTER DEFAULT PRIVILEGES IN SCHEMA public REVOKE ALL PRIVILEGES ON TABLES FROM %I',
+        api_role
+      );
+      EXECUTE format(
+        'ALTER DEFAULT PRIVILEGES IN SCHEMA public REVOKE ALL PRIVILEGES ON SEQUENCES FROM %I',
+        api_role
+      );
+    END IF;
+  END LOOP;
+END
+$$;

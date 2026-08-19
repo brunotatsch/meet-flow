@@ -7,7 +7,6 @@ import { CustomerDetailsStep } from "./steps/customer-details-step";
 import { ReviewStep } from "./steps/review-step";
 import { RoomSelectionStep } from "./steps/room-selection-step";
 import { ScheduleStep } from "./steps/schedule-step";
-import { SuccessStep } from "./steps/success-step";
 import { useBookingWizard } from "./use-booking-wizard";
 
 /**
@@ -34,12 +33,11 @@ export function BookingWizard() {
 
   return (
     <BookingWizardProvider value={{ companySlug, state, dispatch }}>
-      {state.step !== "sucesso" && <StepIndicator current={state.step} />}
+      <StepIndicator current={state.step} />
       {state.step === "sala" && <RoomSelectionStep />}
       {state.step === "horario" && <ScheduleStep />}
       {state.step === "dados" && <CustomerDetailsStep />}
       {state.step === "revisao" && <ReviewStep />}
-      {state.step === "sucesso" && <SuccessStep />}
     </BookingWizardProvider>
   );
 }

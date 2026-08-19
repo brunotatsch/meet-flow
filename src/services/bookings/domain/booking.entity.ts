@@ -1,9 +1,18 @@
 import { BookingStatus } from "@shared/enums/booking-status";
-import { InvalidBookingDataError } from "./errors";
+import {
+  CheckInOutsideWindowError,
+  InvalidBookingDataError,
+  InvalidBookingTransitionError,
+} from "./errors";
 
 const MIN_NAME_LENGTH = 3;
 const MAX_NAME_LENGTH = 100;
 const MINUTE_IN_MS = 60_000;
+/**
+ * Stripe aceita expires_at a partir de 30 minutos. Um minuto de margem evita que
+ * latência e arredondamento para epoch façam a API enxergar menos que o mínimo.
+ */
+export const BOOKING_HOLD_MINUTES = 31;
 
 export interface BookingProps {
   id: string;
@@ -17,6 +26,13 @@ export interface BookingProps {
   status: BookingStatus;
   totalInCents: number;
   notes: string | null;
+  expiresAt?: Date | null;
+  stripeCheckoutSessionId?: string | null;
+  stripePaymentIntentId?: string | null;
+  confirmedAt?: Date | null;
+  cancellationReason?: string | null;
+  checkedInAt?: Date | null;
+  checkedOutAt?: Date | null;
   createdAt: Date;
   updatedAt: Date;
 }
@@ -34,6 +50,8 @@ export interface CreateBookingProps {
   /** Sempre calculado no servidor. Ver `bookingTotalInCents`. */
   totalInCents: number;
   notes?: string | null;
+  /** Relógio injetado pelo caso de uso; evita depender da hora da máquina em testes. */
+  now?: Date;
 }
 
 /**
@@ -49,15 +67,15 @@ export interface CreateBookingProps {
  * impossível listar ou cancelar reservas legítimas assim que o admin trocasse
  * `slot_minutes`.
  *
- * A reserva nasce `confirmed` porque o MVP ainda não tem pagamento. Quando a
- * MVP-08 entrar, o estado inicial passa a ser `pending` e a confirmação vira
- * consequência do webhook.
+ * A reserva nasce `pending` e ocupa o horário durante o hold. A confirmação é
+ * consequência de pagamento confirmado, total zero ou criação manual autenticada;
+ * a expiração e os horários reais são persistidos, sem timers em memória.
  */
 export class Booking {
   private constructor(private props: BookingProps) {}
 
   static create(input: CreateBookingProps): Booking {
-    const now = new Date();
+    const now = input.now ?? new Date();
     const booking = Booking.restore({
       id: crypto.randomUUID(),
       companyId: input.companyId,
@@ -67,9 +85,16 @@ export class Booking {
       customerPhone: input.customerPhone ?? null,
       startsAt: input.startsAt,
       endsAt: input.endsAt,
-      status: BookingStatus.CONFIRMED,
+      status: BookingStatus.PENDING,
       totalInCents: input.totalInCents,
       notes: input.notes ?? null,
+      expiresAt: new Date(now.getTime() + BOOKING_HOLD_MINUTES * MINUTE_IN_MS),
+      stripeCheckoutSessionId: null,
+      stripePaymentIntentId: null,
+      confirmedAt: null,
+      cancellationReason: null,
+      checkedInAt: null,
+      checkedOutAt: null,
       createdAt: now,
       updatedAt: now,
     });
@@ -89,6 +114,13 @@ export class Booking {
       customerName: validateCustomerName(props.customerName),
       customerEmail: validateCustomerEmail(props.customerEmail),
       totalInCents: validateTotal(props.totalInCents),
+      expiresAt: props.expiresAt ?? null,
+      stripeCheckoutSessionId: props.stripeCheckoutSessionId ?? null,
+      stripePaymentIntentId: props.stripePaymentIntentId ?? null,
+      confirmedAt: props.confirmedAt ?? null,
+      cancellationReason: props.cancellationReason ?? null,
+      checkedInAt: props.checkedInAt ?? null,
+      checkedOutAt: props.checkedOutAt ?? null,
     });
   }
 
@@ -136,6 +168,34 @@ export class Booking {
     return this.props.notes;
   }
 
+  get expiresAt(): Date | null {
+    return this.props.expiresAt ?? null;
+  }
+
+  get stripeCheckoutSessionId(): string | null {
+    return this.props.stripeCheckoutSessionId ?? null;
+  }
+
+  get stripePaymentIntentId(): string | null {
+    return this.props.stripePaymentIntentId ?? null;
+  }
+
+  get confirmedAt(): Date | null {
+    return this.props.confirmedAt ?? null;
+  }
+
+  get cancellationReason(): string | null {
+    return this.props.cancellationReason ?? null;
+  }
+
+  get checkedInAt(): Date | null {
+    return this.props.checkedInAt ?? null;
+  }
+
+  get checkedOutAt(): Date | null {
+    return this.props.checkedOutAt ?? null;
+  }
+
   get createdAt(): Date {
     return this.props.createdAt;
   }
@@ -156,16 +216,142 @@ export class Booking {
    * Cancelar de novo é no-op em vez de erro - o cliente que reenvia a requisição por
    * timeout de rede deve encontrar o mesmo estado, não uma falha.
    *
-   * Ainda não existe transição para `completed` no produto; quando existir, cancelar
-   * uma reserva já concluída precisará ser recusado aqui.
    */
-  cancel(): void {
+  cancel(reason = "cancelled", now = new Date()): void {
     if (this.props.status === BookingStatus.CANCELLED) {
       return;
     }
 
+    if (
+      this.props.status === BookingStatus.COMPLETED ||
+      this.props.status === BookingStatus.NO_SHOW ||
+      this.checkedInAt
+    ) {
+      throw new InvalidBookingTransitionError("Reserva encerrada não pode ser cancelada.");
+    }
+
     this.props.status = BookingStatus.CANCELLED;
-    this.props.updatedAt = new Date();
+    this.props.cancellationReason = reason;
+    this.props.updatedAt = now;
+  }
+
+  /** Atualiza somente a cópia em memória depois de um attach condicional no banco. */
+  attachCheckoutSession(sessionId: string): void {
+    if (this.props.status !== BookingStatus.PENDING) {
+      throw new InvalidBookingDataError("Somente reserva pendente aceita Checkout.");
+    }
+
+    this.props.stripeCheckoutSessionId = sessionId;
+  }
+
+  confirm(now = new Date(), paymentIntentId: string | null = null): boolean {
+    if (this.props.status !== BookingStatus.PENDING) return false;
+
+    if (this.expiresAt && this.expiresAt.getTime() <= now.getTime()) {
+      this.cancel("expired", now);
+      return false;
+    }
+
+    this.props.status = BookingStatus.CONFIRMED;
+    this.props.confirmedAt = now;
+    this.props.stripePaymentIntentId = paymentIntentId;
+    this.props.updatedAt = now;
+    return true;
+  }
+
+  /** Confirma uma reserva criada presencialmente, sem hold ou Checkout da Stripe. */
+  confirmManually(now = new Date()): void {
+    if (this.props.status !== BookingStatus.PENDING) {
+      throw new InvalidBookingTransitionError("Somente reserva pendente pode ser confirmada.");
+    }
+
+    this.props.status = BookingStatus.CONFIRMED;
+    this.props.confirmedAt = now;
+    this.props.expiresAt = null;
+    this.props.updatedAt = now;
+  }
+
+  /**
+   * Move a reserva preservando sala, duração e valor. A grade vigente é validada
+   * pelo caso de uso antes desta mutação, e o banco arbitra qualquer sobreposição.
+   */
+  reschedule(startsAt: Date, endsAt: Date, slotMinutes: number, now = new Date()): boolean {
+    if (this.props.status !== BookingStatus.CONFIRMED || this.checkedInAt) {
+      throw new InvalidBookingTransitionError(
+        "Somente reserva confirmada e ainda sem check-in pode ser remarcada.",
+      );
+    }
+
+    if (endsAt.getTime() <= startsAt.getTime()) {
+      throw new InvalidBookingDataError("endsAt deve ser posterior a startsAt.");
+    }
+    assertAlignedDuration(startsAt, endsAt, slotMinutes);
+
+    if (endsAt.getTime() - startsAt.getTime() !== this.endsAt.getTime() - this.startsAt.getTime()) {
+      throw new InvalidBookingDataError("O reagendamento deve preservar a duração da reserva.");
+    }
+
+    if (
+      startsAt.getTime() === this.startsAt.getTime() &&
+      endsAt.getTime() === this.endsAt.getTime()
+    ) {
+      return false;
+    }
+
+    this.props.startsAt = startsAt;
+    this.props.endsAt = endsAt;
+    this.props.updatedAt = now;
+    return true;
+  }
+
+  checkIn(now = new Date(), confirmOutsideWindow = false): boolean {
+    if (this.checkedInAt) return false;
+    if (this.props.status !== BookingStatus.CONFIRMED) {
+      throw new InvalidBookingTransitionError("Check-in exige uma reserva confirmada.");
+    }
+
+    const outsideWindow =
+      now.getTime() < this.startsAt.getTime() || now.getTime() > this.endsAt.getTime();
+    if (outsideWindow && !confirmOutsideWindow) {
+      throw new CheckInOutsideWindowError();
+    }
+
+    this.props.checkedInAt = now;
+    this.props.updatedAt = now;
+    return true;
+  }
+
+  checkOut(now = new Date()): boolean {
+    if (this.props.status === BookingStatus.COMPLETED && this.checkedOutAt) return false;
+    if (this.props.status !== BookingStatus.CONFIRMED || !this.checkedInAt) {
+      throw new InvalidBookingTransitionError("Check-out exige check-in anterior.");
+    }
+    if (now.getTime() < this.checkedInAt.getTime()) {
+      throw new InvalidBookingTransitionError("Check-out não pode anteceder o check-in.");
+    }
+
+    this.props.checkedOutAt = now;
+    this.props.status = BookingStatus.COMPLETED;
+    this.props.updatedAt = now;
+    return true;
+  }
+
+  markNoShow(now = new Date()): boolean {
+    if (this.props.status === BookingStatus.NO_SHOW) return false;
+    if (this.props.status !== BookingStatus.CONFIRMED || this.checkedInAt) {
+      throw new InvalidBookingTransitionError(
+        "Não comparecimento exige reserva confirmada e sem check-in.",
+      );
+    }
+    if (now.getTime() < this.startsAt.getTime()) {
+      throw new InvalidBookingTransitionError(
+        "Não comparecimento só pode ser marcado após o início da reserva.",
+      );
+    }
+
+    this.props.status = BookingStatus.NO_SHOW;
+    this.props.updatedAt = now;
+    return true;
   }
 }
 

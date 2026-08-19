@@ -20,7 +20,10 @@ const existingRoom = {
 };
 
 function jsonResponse(status: number, body: unknown): Response {
-  return new Response(JSON.stringify(body), { status, headers: { "Content-Type": "application/json" } });
+  return new Response(JSON.stringify(body), {
+    status,
+    headers: { "Content-Type": "application/json" },
+  });
 }
 
 function renderCreatePage() {
@@ -30,6 +33,7 @@ function renderCreatePage() {
         <Routes>
           <Route path="/admin/rooms/new" element={<RoomFormPage />} />
           <Route path="/admin" element={<p>Lista de salas</p>} />
+          <Route path="/admin/billing" element={<p>Tela de planos</p>} />
         </Routes>
       </ToastProvider>
     </MemoryRouter>,
@@ -119,6 +123,39 @@ describe("RoomFormPage - criação", () => {
     // Não navegou: o formulário continua na tela para corrigir.
     expect(screen.queryByText("Lista de salas")).not.toBeInTheDocument();
   });
+
+  it("no 402 de limite do plano, mantém o alerta e oferece acesso a billing", async () => {
+    const user = userEvent.setup();
+
+    vi.stubGlobal(
+      "fetch",
+      vi.fn((input: string, init?: RequestInit) => {
+        if (input.endsWith("/rooms") && init?.method === "POST") {
+          return Promise.resolve(
+            jsonResponse(402, {
+              code: "PLAN_LIMIT_EXCEEDED",
+              message: "Seu plano permite no máximo 2 salas.",
+            }),
+          );
+        }
+        throw new Error(`fetch não mockado para ${input}`);
+      }),
+    );
+
+    renderCreatePage();
+
+    await user.type(screen.getByLabelText("Nome"), "Sala Limite");
+    await user.type(screen.getByLabelText("Capacidade"), "8");
+    await user.type(screen.getByLabelText("Valor por hora (R$)"), "100");
+    await user.click(screen.getByRole("button", { name: "Salvar" }));
+
+    expect(await screen.findByText("Seu plano permite no máximo 2 salas.")).toBeInTheDocument();
+    const billingLink = screen.getByRole("link", { name: "Ver planos e limites" });
+    expect(billingLink).toHaveAttribute("href", "/admin/billing");
+
+    await user.click(billingLink);
+    expect(await screen.findByText("Tela de planos")).toBeInTheDocument();
+  });
 });
 
 describe("RoomFormPage - edição", () => {
@@ -126,7 +163,8 @@ describe("RoomFormPage - edição", () => {
     vi.stubGlobal(
       "fetch",
       vi.fn((input: string) => {
-        if (input.endsWith(`/rooms/${existingRoom.id}`)) return Promise.resolve(jsonResponse(200, existingRoom));
+        if (input.endsWith(`/rooms/${existingRoom.id}`))
+          return Promise.resolve(jsonResponse(200, existingRoom));
         throw new Error(`fetch não mockado para ${input}`);
       }),
     );
@@ -158,7 +196,8 @@ describe("RoomFormPage - edição", () => {
           patchedBody = JSON.parse(init.body as string);
           return Promise.resolve(jsonResponse(200, existingRoom));
         }
-        if (input.endsWith(`/rooms/${existingRoom.id}`)) return Promise.resolve(jsonResponse(200, existingRoom));
+        if (input.endsWith(`/rooms/${existingRoom.id}`))
+          return Promise.resolve(jsonResponse(200, existingRoom));
         throw new Error(`fetch não mockado para ${input}`);
       }),
     );
@@ -190,7 +229,8 @@ describe("RoomFormPage - edição", () => {
           patchedBody = JSON.parse(init.body as string);
           return Promise.resolve(jsonResponse(200, { ...existingRoom, description: null }));
         }
-        if (input.endsWith(`/rooms/${existingRoom.id}`)) return Promise.resolve(jsonResponse(200, existingRoom));
+        if (input.endsWith(`/rooms/${existingRoom.id}`))
+          return Promise.resolve(jsonResponse(200, existingRoom));
         throw new Error(`fetch não mockado para ${input}`);
       }),
     );

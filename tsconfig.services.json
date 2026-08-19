@@ -4,6 +4,8 @@
     "outDir": "dist"
   },
   "include": [
+    "api/**/*.ts",
+    "scripts/**/*.ts",
     "src/shared/**/*.ts",
     "src/services/**/*.ts",
     "test/services/**/*.ts",

@@ -1,4 +1,4 @@
-import { and, asc, eq, gt, lt, ne } from "drizzle-orm";
+import { and, asc, eq, gt, isNotNull, lt, lte, ne, or, sql } from "drizzle-orm";
 import { BookingStatus } from "@shared/enums/booking-status";
 import type { Booking } from "@services/bookings/domain/booking.entity";
 import {
@@ -42,6 +42,10 @@ export class DrizzleBookingRepository extends BookingRepository {
           eq(bookings.companyId, companyId),
           eq(bookings.roomId, roomId),
           ne(bookings.status, BookingStatus.CANCELLED),
+          or(
+            ne(bookings.status, BookingStatus.PENDING),
+            and(isNotNull(bookings.expiresAt), gt(bookings.expiresAt, sql`now()`)),
+          ),
           lt(bookings.startsAt, to),
           gt(bookings.endsAt, from),
         ),
@@ -105,6 +109,86 @@ export class DrizzleBookingRepository extends BookingRepository {
       throw toBookingRepositoryError(error, booking);
     }
   }
+
+  override async expirePending(now: Date, companyId?: string, roomId?: string): Promise<number> {
+    const conditions = [
+      eq(bookings.status, BookingStatus.PENDING),
+      isNotNull(bookings.expiresAt),
+      lte(bookings.expiresAt, now),
+    ];
+
+    if (companyId) conditions.push(eq(bookings.companyId, companyId));
+    if (roomId) conditions.push(eq(bookings.roomId, roomId));
+
+    const rows = await db
+      .update(bookings)
+      .set({
+        status: BookingStatus.CANCELLED,
+        cancellationReason: "expired",
+        updatedAt: now,
+      })
+      .where(and(...conditions))
+      .returning({ id: bookings.id });
+
+    return rows.length;
+  }
+
+  async attachCheckoutSession(bookingId: string, sessionId: string, now: Date): Promise<boolean> {
+    const rows = await db
+      .update(bookings)
+      .set({ stripeCheckoutSessionId: sessionId, updatedAt: now })
+      .where(
+        and(
+          eq(bookings.id, bookingId),
+          eq(bookings.status, BookingStatus.PENDING),
+          isNotNull(bookings.expiresAt),
+          gt(bookings.expiresAt, now),
+        ),
+      )
+      .returning({ id: bookings.id });
+
+    return rows.length === 1;
+  }
+
+  async cancelPendingById(bookingId: string, reason: string, now: Date): Promise<boolean> {
+    const rows = await db
+      .update(bookings)
+      .set({ status: BookingStatus.CANCELLED, cancellationReason: reason, updatedAt: now })
+      .where(and(eq(bookings.id, bookingId), eq(bookings.status, BookingStatus.PENDING)))
+      .returning({ id: bookings.id });
+
+    return rows.length === 1;
+  }
+
+  async confirmFreeBooking(bookingId: string, now: Date): Promise<boolean> {
+    const rows = await db
+      .update(bookings)
+      .set({ status: BookingStatus.CONFIRMED, confirmedAt: now, updatedAt: now })
+      .where(
+        and(
+          eq(bookings.id, bookingId),
+          eq(bookings.status, BookingStatus.PENDING),
+          eq(bookings.totalInCents, 0),
+          isNotNull(bookings.expiresAt),
+          gt(bookings.expiresAt, now),
+        ),
+      )
+      .returning({ id: bookings.id });
+
+    return rows.length === 1;
+  }
+
+  async findByCheckoutSession(sessionId: string, companyId: string): Promise<Booking | null> {
+    const [row] = await db
+      .select()
+      .from(bookings)
+      .where(
+        and(eq(bookings.stripeCheckoutSessionId, sessionId), eq(bookings.companyId, companyId)),
+      )
+      .limit(1);
+
+    return row ? toBookingEntity(row) : null;
+  }
 }
 
 /**
@@ -124,7 +208,11 @@ function toBookingRepositoryError(error: unknown, booking: Booking): unknown {
     return error;
   }
 
-  if (failure.sqlState === EXCLUSION_VIOLATION && failure.constraint === "bookings_no_overlap") {
+  if (
+    failure.sqlState === EXCLUSION_VIOLATION &&
+    (failure.constraint === "bookings_no_overlap" ||
+      failure.constraint === "bookings_room_blocks_no_overlap")
+  ) {
     return new BookingConflictError(booking.roomId);
   }
 

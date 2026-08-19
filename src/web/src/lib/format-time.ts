@@ -105,3 +105,16 @@ export function shiftIsoDate(date: string, days: number): string {
 
   return shifted.toISOString().slice(0, 10);
 }
+
+/** Segunda-feira da semana ISO que contém `date`. */
+export function startOfIsoWeek(date: string): string {
+  const [year, month, day] = date.split("-").map(Number) as [number, number, number];
+  const value = new Date(Date.UTC(year, month - 1, day));
+  const daysSinceMonday = (value.getUTCDay() + 6) % 7;
+  return shiftIsoDate(date, -daysSinceMonday);
+}
+
+export function minutesToTime(minutes: number): string {
+  const bounded = Math.max(0, Math.min(24 * 60 - 1, Math.round(minutes)));
+  return `${String(Math.floor(bounded / 60)).padStart(2, "0")}:${String(bounded % 60).padStart(2, "0")}`;
+}

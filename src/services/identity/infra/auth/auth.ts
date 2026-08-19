@@ -4,7 +4,14 @@ import { eq } from "drizzle-orm";
 import { env } from "@services/config/env";
 import { db } from "@services/database/client";
 import * as schema from "@services/database/schema";
-import { authPlugins } from "./auth-plugins";
+import { DrizzleEmailOutboxRepository } from "@services/notifications/infra/database/drizzle-email-outbox.repository";
+import { createAuthPlugins } from "./auth-plugins";
+import { createInvitationEmailEnqueuer } from "./invitation-email";
+
+const invitationEmailOutbox = new DrizzleEmailOutboxRepository();
+const authPlugins = createAuthPlugins({
+  sendInvitationEmail: createInvitationEmailEnqueuer(invitationEmailOutbox, env.APP_URL),
+});
 
 /**
  * Instância única do Better Auth.
@@ -42,6 +49,11 @@ export const auth = betterAuth({
      */
     transaction: true,
   }),
+  advanced: {
+    // Better Auth já marca cookies de sessão como httpOnly; em produção tornamos
+    // o requisito HTTPS explícito, sem depender de inferência de proxy/protocolo.
+    useSecureCookies: env.NODE_ENV === "production",
+  },
   emailAndPassword: {
     enabled: true,
     disableSignUp: true,

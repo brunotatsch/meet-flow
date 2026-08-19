@@ -1,13 +1,40 @@
 import { LogOut } from "lucide-react";
 import { Navigate, NavLink, Outlet, useLocation, useNavigate } from "react-router-dom";
+import { PermissionAction, PermissionResource, can } from "@shared/auth/permissions";
 import { Button } from "@web/components/button";
 import { LoadingScreen } from "@web/components/loading-screen";
 import { cn } from "@web/lib/utils";
 import { signOut, useSession } from "@web/lib/auth-client";
+import { useAppSession } from "@web/lib/use-app-session";
 
-const NAV_LINKS = [
+interface AdminNavLink {
+  to: string;
+  label: string;
+  end: boolean;
+  permission?: readonly [PermissionAction, PermissionResource];
+}
+
+const NAV_LINKS: AdminNavLink[] = [
   { to: "/admin", label: "Salas", end: true },
   { to: "/admin/agenda", label: "Agenda", end: false },
+  {
+    to: "/admin/equipe",
+    label: "Equipe",
+    end: false,
+    permission: [PermissionAction.READ, PermissionResource.TEAM] as const,
+  },
+  {
+    to: "/admin/billing",
+    label: "Plano",
+    end: false,
+    permission: [PermissionAction.READ, PermissionResource.BILLING] as const,
+  },
+  {
+    to: "/admin/relatorios",
+    label: "Relatórios",
+    end: false,
+    permission: [PermissionAction.READ, PermissionResource.REPORT] as const,
+  },
 ];
 
 /**
@@ -22,6 +49,7 @@ export function AdminLayout() {
   const { data: session, isPending } = useSession();
   const location = useLocation();
   const navigate = useNavigate();
+  const appSession = useAppSession();
 
   if (isPending) {
     return <LoadingScreen label="Verificando sessão..." />;
@@ -40,7 +68,12 @@ export function AdminLayout() {
     <div className="flex min-h-dvh flex-col bg-background">
       <header className="flex items-center justify-between border-b border-border px-6 py-3">
         <nav className="flex items-center gap-1" aria-label="Navegação administrativa">
-          {NAV_LINKS.map((link) => (
+          {NAV_LINKS.filter(
+            (link) =>
+              !link.permission ||
+              (appSession.status === "ready" &&
+                can(appSession.data.role, link.permission[0], link.permission[1])),
+          ).map((link) => (
             <NavLink
               key={link.to}
               to={link.to}
@@ -48,7 +81,9 @@ export function AdminLayout() {
               className={({ isActive }) =>
                 cn(
                   "rounded-md px-3 py-1.5 text-sm font-medium",
-                  isActive ? "bg-secondary text-secondary-foreground" : "text-muted-foreground hover:text-foreground",
+                  isActive
+                    ? "bg-secondary text-secondary-foreground"
+                    : "text-muted-foreground hover:text-foreground",
                 )
               }
             >

@@ -92,10 +92,11 @@ beforeEach(async () => {
 });
 
 describe("CreateBookingUseCase", () => {
-  it("cria a reserva confirmada e a persiste", async () => {
+  it("cria a reserva pending com expiração e a persiste", async () => {
     const booking = await useCase.execute(command());
 
-    expect(booking.status).toBe(BookingStatus.CONFIRMED);
+    expect(booking.status).toBe(BookingStatus.PENDING);
+    expect(booking.expiresAt).toEqual(new Date("2026-08-01T00:31:00.000Z"));
     expect(booking.companyId).toBe(COMPANY_ID);
     expect(booking.roomId).toBe(room.id);
     expect(await bookings.findById(booking.id, COMPANY_ID)).not.toBeNull();

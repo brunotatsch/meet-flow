@@ -42,4 +42,12 @@ export abstract class BookingRepository {
   abstract create(booking: Booking): Promise<void>;
 
   abstract update(booking: Booking): Promise<void>;
+
+  /**
+   * Cancela holds vencidos de forma idempotente. A implementação vazia mantém
+   * repositórios de domínio simples; a implementação Postgres faz o update atômico.
+   */
+  async expirePending(_now: Date, _companyId?: string, _roomId?: string): Promise<number> {
+    return 0;
+  }
 }

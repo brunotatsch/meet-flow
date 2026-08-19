@@ -8,8 +8,8 @@ import { defineConfig } from "vite";
  * com Vite). `root` é `src/web` para que `index.html` e os assets fiquem isolados
  * do resto do repositório.
  *
- * O proxy cobre `/api` e `/health`: são os dois prefixos que `server.ts` expõe, e
- * sem os dois a SPA precisaria de CORS manual ou de reescrever URLs por ambiente.
+ * O proxy cobre a superfície única `/api`, mantendo a mesma origem do deployment
+ * Vercel sem exigir CORS manual em desenvolvimento.
  */
 export default defineConfig(({ mode }) => {
   const apiTarget = process.env.API_URL ?? "http://localhost:3000";
@@ -26,7 +26,6 @@ export default defineConfig(({ mode }) => {
     server: {
       proxy: {
         "/api": { target: apiTarget, changeOrigin: true },
-        "/health": { target: apiTarget, changeOrigin: true },
       },
     },
     build: {

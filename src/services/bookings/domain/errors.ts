@@ -75,3 +75,22 @@ export class InvalidBookingDataError extends Error {
     this.name = "InvalidBookingDataError";
   }
 }
+
+/** A operação é válida, mas não pode partir do estado atual da reserva. */
+export class InvalidBookingTransitionError extends Error {
+  constructor(message: string) {
+    super(message);
+    this.name = "InvalidBookingTransitionError";
+  }
+}
+
+/**
+ * Check-in antes do início ou depois do fim precisa de uma decisão humana
+ * explícita; a API nunca presume essa confirmação.
+ */
+export class CheckInOutsideWindowError extends Error {
+  constructor() {
+    super("O horário atual está fora da janela da reserva. Confirme para continuar.");
+    this.name = "CheckInOutsideWindowError";
+  }
+}

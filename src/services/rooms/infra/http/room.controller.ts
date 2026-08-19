@@ -1,5 +1,11 @@
 import type { FastifyReply, FastifyRequest } from "fastify";
 import {
+  AuditAction,
+  AuditActorType,
+  AuditResource,
+  type AuditLog,
+} from "@services/audit/domain/audit-log";
+import {
   CreateRoomSchema,
   RoomFiltersSchema,
   UpdateRoomSchema,
@@ -27,10 +33,11 @@ export class RoomController {
     private readonly getRoomUseCase: GetRoomUseCase,
     private readonly updateRoomUseCase: UpdateRoomUseCase,
     private readonly deactivateRoomUseCase: DeactivateRoomUseCase,
+    private readonly auditLog: AuditLog,
   ) {}
 
   async create(request: FastifyRequest, reply: FastifyReply): Promise<FastifyReply> {
-    const { companyId } = getRequestAuth(request);
+    const { companyId, userId } = getRequestAuth(request);
     const parsed = CreateRoomSchema.safeParse(request.body);
 
     if (!parsed.success) {
@@ -43,6 +50,15 @@ export class RoomController {
     }
 
     const room = await this.createRoomUseCase.execute(companyId, parsed.data).catch(mapRoomError);
+
+    await this.auditLog.record({
+      companyId,
+      actorType: AuditActorType.USER,
+      actorUserId: userId,
+      action: AuditAction.CREATE,
+      resource: AuditResource.ROOM,
+      resourceId: room.id,
+    });
 
     return reply.code(201).send(toRoomResponse(room));
   }
@@ -67,7 +83,7 @@ export class RoomController {
   }
 
   async update(request: FastifyRequest<RoomParams>, reply: FastifyReply): Promise<FastifyReply> {
-    const { companyId } = getRequestAuth(request);
+    const { companyId, userId } = getRequestAuth(request);
     const parsed = UpdateRoomSchema.safeParse(request.body);
 
     if (!parsed.success) {
@@ -83,6 +99,16 @@ export class RoomController {
       .execute(request.params.id, companyId, parsed.data)
       .catch(mapRoomError);
 
+    await this.auditLog.record({
+      companyId,
+      actorType: AuditActorType.USER,
+      actorUserId: userId,
+      action: AuditAction.UPDATE,
+      resource: AuditResource.ROOM,
+      resourceId: room.id,
+      metadata: { fields: Object.keys(parsed.data).sort() },
+    });
+
     return reply.send(toRoomResponse(room));
   }
 
@@ -90,11 +116,21 @@ export class RoomController {
     request: FastifyRequest<RoomParams>,
     reply: FastifyReply,
   ): Promise<FastifyReply> {
-    const { companyId } = getRequestAuth(request);
+    const { companyId, userId } = getRequestAuth(request);
 
     const room = await this.deactivateRoomUseCase
       .execute(request.params.id, companyId)
       .catch(mapRoomError);
+
+    await this.auditLog.record({
+      companyId,
+      actorType: AuditActorType.USER,
+      actorUserId: userId,
+      action: AuditAction.CANCEL,
+      resource: AuditResource.ROOM,
+      resourceId: room.id,
+      metadata: { operation: "deactivate" },
+    });
 
     return reply.send(toRoomResponse(room));
   }

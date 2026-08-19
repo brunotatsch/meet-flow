@@ -4,6 +4,7 @@ import { CompanyNotFoundError } from "@services/companies/domain/errors";
 import { RoomNotFoundError } from "@services/rooms/domain/errors";
 import type { RoomScheduleRepository } from "@services/rooms/domain/room-schedule.repository";
 import type { RoomRepository } from "@services/rooms/domain/room.repository";
+import type { RoomBlockOccupancyPort } from "@services/room-blocks/domain/room-block.repository";
 import {
   buildDayAvailability,
   resolveOpeningPeriod,
@@ -45,6 +46,7 @@ export class CheckAvailabilityUseCase {
     private readonly roomRepository: RoomRepository,
     private readonly roomScheduleRepository: RoomScheduleRepository,
     private readonly bookingRepository: BookingRepository,
+    private readonly roomBlockOccupancy: RoomBlockOccupancyPort,
     private readonly clock: Clock,
   ) {}
 
@@ -115,18 +117,26 @@ export class CheckAvailabilityUseCase {
      * "reservas que começam neste intervalo": uma reserva iniciada na véspera e que
      * avança madrugada adentro ocupa os primeiros slots e precisa entrar na conta.
      */
-    const bookedPeriods = await this.bookingRepository.listActivePeriods(
-      input.companyId,
-      input.roomId,
-      period.opensAt,
-      period.closesAt,
-    );
+    const [bookedPeriods, blockedPeriods] = await Promise.all([
+      this.bookingRepository.listActivePeriods(
+        input.companyId,
+        input.roomId,
+        period.opensAt,
+        period.closesAt,
+      ),
+      this.roomBlockOccupancy.listBlockedPeriods(
+        input.companyId,
+        input.roomId,
+        period.opensAt,
+        period.closesAt,
+      ),
+    ]);
 
     return buildDayAvailability({
       period,
       slotMinutes: input.window.slotMinutes,
       hourlyRateInCents: input.hourlyRateInCents,
-      bookedPeriods,
+      bookedPeriods: [...bookedPeriods, ...blockedPeriods],
       now: this.clock.now(),
     });
   }

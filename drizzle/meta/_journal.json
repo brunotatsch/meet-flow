@@ -22,6 +22,55 @@
       "when": 1786539371131,
       "tag": "0002_auth_multi_tenant",
       "breakpoints": true
+    },
+    {
+      "idx": 3,
+      "version": "7",
+      "when": 1787145953392,
+      "tag": "0003_stripe_billing",
+      "breakpoints": true
+    },
+    {
+      "idx": 4,
+      "version": "7",
+      "when": 1787146529637,
+      "tag": "0004_snapshot_checks",
+      "breakpoints": true
+    },
+    {
+      "idx": 5,
+      "version": "7",
+      "when": 1787146700000,
+      "tag": "0005_serverless_hardening",
+      "breakpoints": true
+    },
+    {
+      "idx": 6,
+      "version": "7",
+      "when": 1787146701000,
+      "tag": "0006_reports_indexes",
+      "breakpoints": true
+    },
+    {
+      "idx": 7,
+      "version": "7",
+      "when": 1787147190140,
+      "tag": "0007_email_outbox",
+      "breakpoints": true
+    },
+    {
+      "idx": 8,
+      "version": "7",
+      "when": 1787147701619,
+      "tag": "0008_calendar_operations",
+      "breakpoints": true
+    },
+    {
+      "idx": 9,
+      "version": "7",
+      "when": 1787147877723,
+      "tag": "0009_room_blocks",
+      "breakpoints": true
     }
   ]
 }

@@ -8,10 +8,10 @@ import { runMigrations } from "@services/database/migrator";
  * "aplica tudo a partir de um banco vazio".
  */
 export default async function setup(): Promise<void> {
-  const databaseUrl = process.env.DATABASE_URL;
+  const databaseUrl = process.env.DIRECT_DATABASE_URL;
 
   if (!databaseUrl) {
-    throw new Error("DATABASE_URL ausente: a suíte e2e depende de .env.test.");
+    throw new Error("DIRECT_DATABASE_URL ausente: a suíte e2e depende de .env.test.");
   }
 
   const databaseName = new URL(databaseUrl).pathname.slice(1);

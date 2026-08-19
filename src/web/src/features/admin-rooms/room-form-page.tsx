@@ -1,5 +1,5 @@
 import { useState, type FormEvent } from "react";
-import { useNavigate, useParams } from "react-router-dom";
+import { Link, useNavigate, useParams } from "react-router-dom";
 import {
   CreateRoomSchema,
   RoomResponseSchema,
@@ -35,9 +35,8 @@ export function RoomFormPage() {
   const navigate = useNavigate();
   const { toast } = useToast();
 
-  const existingRoomState = useKeyedFetch<RoomResponse>(
-    isEditing ? id! : null,
-    (signal) => api.get(`/rooms/${id}`, RoomResponseSchema, { signal }),
+  const existingRoomState = useKeyedFetch<RoomResponse>(isEditing ? id! : null, (signal) =>
+    api.get(`/rooms/${id}`, RoomResponseSchema, { signal }),
   );
 
   const [name, setName] = useState("");
@@ -48,6 +47,7 @@ export function RoomFormPage() {
   const [photoUrl, setPhotoUrl] = useState("");
   const [hydratedFrom, setHydratedFrom] = useState<string | null>(null);
   const [errors, setErrors] = useState<FieldErrors>({});
+  const [planLimitMessage, setPlanLimitMessage] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
 
   /**
@@ -117,6 +117,7 @@ export function RoomFormPage() {
     }
 
     setErrors({});
+    setPlanLimitMessage(null);
     setSubmitting(true);
 
     try {
@@ -136,8 +137,18 @@ export function RoomFormPage() {
         return;
       }
 
+      if (
+        error instanceof ApiRequestError &&
+        error.status === 402 &&
+        error.body.code === "PLAN_LIMIT_EXCEEDED"
+      ) {
+        setPlanLimitMessage(error.body.message);
+        return;
+      }
+
       toast({
-        title: error instanceof ApiRequestError ? error.body.message : "Não foi possível salvar a sala.",
+        title:
+          error instanceof ApiRequestError ? error.body.message : "Não foi possível salvar a sala.",
         variant: "error",
       });
     }
@@ -146,6 +157,21 @@ export function RoomFormPage() {
   return (
     <div className="mx-auto max-w-xl p-6">
       <h1 className="text-xl font-semibold">{isEditing ? "Editar sala" : "Nova sala"}</h1>
+
+      {planLimitMessage && (
+        <div
+          role="alert"
+          className="mt-4 rounded-lg border border-destructive/40 bg-destructive/10 p-4 text-sm"
+        >
+          <p>{planLimitMessage}</p>
+          <Link
+            className="mt-2 inline-block font-medium text-primary underline"
+            to="/admin/billing"
+          >
+            Ver planos e limites
+          </Link>
+        </div>
+      )}
 
       <form onSubmit={handleSubmit} className="mt-6 flex flex-col gap-4" noValidate>
         <div>

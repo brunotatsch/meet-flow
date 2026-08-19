@@ -76,6 +76,50 @@ export const CreateBookingSchema = CreateBookingObjectSchema.refine(
 
 export type CreateBookingInput = z.infer<typeof CreateBookingSchema>;
 
+const TimeOfDaySchema = z.string().regex(/^([01]\d|2[0-3]):[0-5]\d$/, "use o formato HH:mm");
+
+/**
+ * Reserva criada pelo painel. Horários de parede chegam separados da data para
+ * que o servidor os interprete no fuso da empresa autenticada, nunca no fuso do
+ * navegador ou do runtime Serverless.
+ */
+export const AdminCreateBookingSchema = z
+  .object({
+    roomId: z.uuid(),
+    date: z.iso.date(),
+    startTime: TimeOfDaySchema,
+    endTime: TimeOfDaySchema,
+    customerName: z.string().min(3).max(100),
+    customerEmail: z.email(),
+    customerPhone: z.string().optional(),
+    notes: z.string().optional(),
+  })
+  .refine((data) => data.endTime > data.startTime, {
+    error: "endTime deve ser posterior a startTime",
+    path: ["endTime"],
+  });
+
+export type AdminCreateBookingInput = z.infer<typeof AdminCreateBookingSchema>;
+
+export const RescheduleBookingSchema = z
+  .object({
+    date: z.iso.date(),
+    startTime: TimeOfDaySchema,
+    endTime: TimeOfDaySchema,
+  })
+  .refine((data) => data.endTime > data.startTime, {
+    error: "endTime deve ser posterior a startTime",
+    path: ["endTime"],
+  });
+
+export type RescheduleBookingInput = z.infer<typeof RescheduleBookingSchema>;
+
+export const CheckInBookingSchema = z.object({
+  confirmOutsideWindow: z.boolean().optional().default(false),
+});
+
+export type CheckInBookingInput = z.infer<typeof CheckInBookingSchema>;
+
 /**
  * Recorte da agenda pedido pelo admin. O período é obrigatório: a listagem alimenta
  * um calendário, que sempre olha um intervalo, e sem corte a resposta cresceria
@@ -110,6 +154,14 @@ export const DayBookingFiltersSchema = z.object({
 
 export type DayBookingFilters = z.infer<typeof DayBookingFiltersSchema>;
 
+/** Primeiro dia (segunda-feira) da semana exibida na agenda administrativa. */
+export const WeekBookingFiltersSchema = z.object({
+  weekStart: z.iso.date(),
+  roomId: z.uuid().optional(),
+});
+
+export type WeekBookingFilters = z.infer<typeof WeekBookingFiltersSchema>;
+
 export const BookingResponseSchema = z.object({
   id: z.uuid(),
   companyId: z.uuid(),
@@ -128,6 +180,10 @@ export const BookingResponseSchema = z.object({
   status: z.enum(bookingStatusValues),
   totalInCents: z.number().int().nonnegative(),
   notes: z.string().nullable(),
+  expiresAt: z.iso.datetime().nullable(),
+  stripeCheckoutSessionId: z.string().nullable(),
+  checkedInAt: z.iso.datetime().nullable().optional().default(null),
+  checkedOutAt: z.iso.datetime().nullable().optional().default(null),
   createdAt: z.iso.datetime(),
   updatedAt: z.iso.datetime(),
 });

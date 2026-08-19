@@ -5,4 +5,5 @@ export const STATUS_LABEL: Record<BookingResponse["status"], string> = {
   confirmed: "Confirmada",
   cancelled: "Cancelada",
   completed: "Concluída",
+  no_show: "Não compareceu",
 };

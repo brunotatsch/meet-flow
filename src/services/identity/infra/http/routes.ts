@@ -9,8 +9,11 @@ import { SignUpConflictError, signUp } from "../auth/sign-up";
 import { user } from "../database/schema/auth";
 import { getRequestAuth, requireAuth } from "./require-auth";
 import { applyWebHeaders, toWebHeaders } from "./web-headers";
+import { registerTeamRoutes } from "./team.routes";
 
 export async function registerIdentityRoutes(app: FastifyInstance): Promise<void> {
+  await app.register(registerTeamRoutes);
+
   app.post("/sign-up", async (request, reply) => {
     const parsed = SignUpSchema.safeParse(request.body);
 

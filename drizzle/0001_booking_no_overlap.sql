@@ -5,7 +5,11 @@
 -- também não existe no schema TypeScript: o Postgres a mantém, a aplicação nunca
 -- a escreve, e o drizzle-kit não a enxerga no snapshot (logo, não tenta removê-la).
 
-CREATE EXTENSION IF NOT EXISTS btree_gist;--> statement-breakpoint
+-- O Supabase mantém extensões em um schema próprio. Criá-lo também deixa a
+-- migration compatível com o Postgres efêmero do CI.
+CREATE SCHEMA IF NOT EXISTS extensions;--> statement-breakpoint
+CREATE EXTENSION IF NOT EXISTS btree_gist WITH SCHEMA extensions;--> statement-breakpoint
+SET search_path TO public, extensions;--> statement-breakpoint
 
 -- Intervalo semiaberto [): reservas encostadas (fim de uma == início da outra)
 -- não se sobrepõem.

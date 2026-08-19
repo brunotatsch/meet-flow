@@ -1,5 +1,15 @@
 import rateLimit from "@fastify/rate-limit";
 import type { FastifyInstance, FastifyRequest } from "fastify";
+import { DrizzleAuditLog } from "@services/audit/infra/database/drizzle-audit-log";
+import { env } from "@services/config/env";
+import { CreateBookingCheckoutUseCase } from "@services/billing/application/create-booking-checkout.use-case";
+import { PlanAccessService } from "@services/billing/application/plan-access.service";
+import { DrizzleSubscriptionRepository } from "@services/billing/infra/database/drizzle-subscription.repository";
+import { DrizzleUsageRepository } from "@services/billing/infra/database/drizzle-usage.repository";
+import { createPlanLimitPreHandler } from "@services/billing/infra/http/plan-limit";
+import { PublicCheckoutController } from "@services/billing/infra/http/public-checkout.controller";
+import { StripeSdkGateway } from "@services/billing/infra/stripe/stripe-sdk.gateway";
+import type { BillingRoutesDependencies } from "@services/billing/infra/http/routes";
 import { CheckAvailabilityUseCase } from "@services/bookings/application/check-availability.use-case";
 import { CreateBookingUseCase } from "@services/bookings/application/create-booking.use-case";
 import { DrizzleBookingRepository } from "@services/bookings/infra/database/drizzle-booking.repository";
@@ -10,7 +20,9 @@ import { DrizzleCompanyRepository } from "@services/companies/infra/database/dri
 import { PublicCompanyController } from "@services/companies/infra/http/public-company.controller";
 import { createResolveCompanySlug } from "@services/companies/infra/http/resolve-company-slug";
 import { HttpError } from "@services/http/http-error";
+import { createPostgresRateLimitStore } from "@services/http/rate-limit/postgres-rate-limit-store";
 import { ListRoomsUseCase } from "@services/rooms/application/list-rooms.use-case";
+import { DrizzleRoomBlockRepository } from "@services/room-blocks/infra/database/drizzle-room-block.repository";
 import { DrizzleRoomScheduleRepository } from "@services/rooms/infra/database/drizzle-room-schedule.repository";
 import { DrizzleRoomRepository } from "@services/rooms/infra/database/drizzle-room.repository";
 import { PublicRoomController } from "@services/rooms/infra/http/public-room.controller";
@@ -70,12 +82,18 @@ interface PublicRoomAvailabilityRequest {
 export async function registerPublicRoutes(
   app: FastifyInstance,
   rateLimitConfig: PublicRoutesRateLimitConfig = defaultPublicRateLimitConfig,
+  billingDependencies: BillingRoutesDependencies = {},
 ): Promise<void> {
   const companyRepository = new DrizzleCompanyRepository();
   const roomRepository = new DrizzleRoomRepository();
   const roomScheduleRepository = new DrizzleRoomScheduleRepository();
   const bookingRepository = new DrizzleBookingRepository();
+  const roomBlockRepository = new DrizzleRoomBlockRepository();
   const clock = new SystemClock();
+  const planAccess = new PlanAccessService(
+    new DrizzleSubscriptionRepository(),
+    new DrizzleUsageRepository(),
+  );
 
   const companyController = new PublicCompanyController();
   const roomController = new PublicRoomController(new ListRoomsUseCase(roomRepository));
@@ -85,6 +103,7 @@ export async function registerPublicRoutes(
       roomRepository,
       roomScheduleRepository,
       bookingRepository,
+      roomBlockRepository,
       clock,
     ),
   );
@@ -96,13 +115,24 @@ export async function registerPublicRoutes(
       bookingRepository,
       clock,
     ),
+    new CreateBookingCheckoutUseCase(
+      billingDependencies.stripeGateway ?? new StripeSdkGateway(),
+      bookingRepository,
+      roomRepository,
+      clock,
+      billingDependencies.appUrl ?? env.APP_URL,
+    ),
+    new DrizzleAuditLog(),
   );
+  const checkoutController = new PublicCheckoutController(bookingRepository);
 
   await app.register(
     async (publicScope) => {
       await publicScope.register(rateLimit, {
         max: rateLimitConfig.general.max,
         timeWindow: rateLimitConfig.general.timeWindow,
+        store: createPostgresRateLimitStore("public"),
+        skipOnError: false,
         errorResponseBuilder: buildRateLimitError,
       });
 
@@ -116,13 +146,30 @@ export async function registerPublicRoutes(
 
       publicScope.get<PublicRoomAvailabilityRequest>(
         "/rooms/:roomId/availability",
+        {
+          preHandler: async (request) => {
+            const company = request.publicCompany;
+            if (company) {
+              await bookingRepository.expirePending(clock.now(), company.id, request.params.roomId);
+            }
+          },
+        },
         (request, reply) => availabilityController.availability(request, reply),
       );
 
       publicScope.post<PublicCompanySlugRequest>(
         "/bookings",
-        { config: { rateLimit: rateLimitConfig.booking } },
+        {
+          config: { rateLimit: rateLimitConfig.booking },
+          preHandler: createPlanLimitPreHandler(planAccess, "bookings", "public"),
+        },
         (request, reply) => bookingController.create(request, reply),
+      );
+
+      publicScope.get<{
+        Params: { companySlug: string; sessionId: string };
+      }>("/checkout-sessions/:sessionId", (request, reply) =>
+        checkoutController.show(request, reply),
       );
     },
     { prefix: "/public/:companySlug" },

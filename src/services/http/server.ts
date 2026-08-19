@@ -1,23 +1,48 @@
-import Fastify, { type FastifyInstance } from "fastify";
+import { randomUUID } from "node:crypto";
+import Fastify, { LogController, type FastifyInstance } from "fastify";
+import { env } from "@services/config/env";
+import { assertDatabaseReady } from "@services/database/readiness";
 import { registerAuthHandler } from "@services/identity/infra/http/auth-handler";
 import { registerErrorHandler } from "./http-error";
 import { registerApiRoutes, type ApiRoutesOptions } from "./routes/index";
+import { LOGGER_REDACT_PATHS, registerHttpSecurity, type HttpSecurityOptions } from "./security";
 
 export interface BuildServerOptions {
   api?: ApiRoutesOptions;
+  security?: HttpSecurityOptions;
+  readinessCheck?: () => Promise<void>;
 }
 
 export function buildServer(options: BuildServerOptions = {}): FastifyInstance {
   const app = Fastify({
-    logger: true,
+    logger: {
+      level: env.LOG_LEVEL,
+      redact: { paths: [...LOGGER_REDACT_PATHS], censor: "[REDACTED]" },
+    },
+    logController: new LogController({ disableRequestLogging: true }),
+    genReqId: () => randomUUID(),
+    trustProxy: env.NODE_ENV === "production",
   });
 
   registerErrorHandler(app);
+  registerHttpSecurity(app, options.security);
 
-  app.get("/health", async () => ({
+  app.get("/api/health", async () => ({
     status: "ok" as const,
-    uptime: process.uptime(),
   }));
+
+  app.get("/api/ready", async (request, reply) => {
+    try {
+      await (options.readinessCheck ?? checkDatabaseReadiness)();
+      return { status: "ready" as const };
+    } catch {
+      request.log.warn(
+        { event: "readiness_failed", requestId: request.id },
+        "readiness check failed",
+      );
+      return reply.code(503).send({ status: "unavailable" as const, requestId: request.id });
+    }
+  });
 
   /**
    * O prefixo precisa ser exatamente o `basePath` do Better Auth. Ele roteia pelo
@@ -30,12 +55,6 @@ export function buildServer(options: BuildServerOptions = {}): FastifyInstance {
   return app;
 }
 
-if (import.meta.main) {
-  const { env } = await import("@services/config/env");
-  const app = buildServer();
-
-  app.listen({ port: env.PORT, host: "0.0.0.0" }).catch((error: unknown) => {
-    app.log.error(error);
-    process.exit(1);
-  });
+async function checkDatabaseReadiness(): Promise<void> {
+  await assertDatabaseReady();
 }

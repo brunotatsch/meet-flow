@@ -21,6 +21,29 @@ export interface PostgresFailure {
   constraint: string | null;
 }
 
+const UNAVAILABLE_DRIVER_CODES = new Set([
+  "ECONNREFUSED",
+  "ECONNRESET",
+  "EPIPE",
+  "ETIMEDOUT",
+  "ENOTFOUND",
+  "EAI_AGAIN",
+  "ERR_POSTGRES_IDLE_TIMEOUT",
+  "ERR_POSTGRES_LIFETIME_TIMEOUT",
+]);
+
+const UNAVAILABLE_SQL_STATES = new Set([
+  "28P01", // senha inválida: configuração do serviço, não erro do cliente HTTP
+  "28000", // autorização inválida
+  "42P01", // relation ausente: migrations não aplicadas
+  "42703", // coluna ausente: schema desatualizado
+  "42883", // função ausente: migration/extensão desatualizada
+  "53300", // conexões esgotadas
+  "57P01", // admin shutdown
+  "57P02", // crash shutdown
+  "57P03", // cannot connect now
+]);
+
 /**
  * Extrai o erro do Postgres de dentro do que a stack embrulha.
  *
@@ -49,6 +72,46 @@ export function findPostgresFailure(error: unknown): PostgresFailure | null {
         sqlState: errno,
         constraint: typeof constraint === "string" ? constraint : null,
       };
+    }
+
+    current = current.cause;
+  }
+
+  return null;
+}
+
+/**
+ * Reconhece falhas de infraestrutura ou schema desatualizado ao longo da
+ * cadeia de `cause`.
+ *
+ * O Bun usa `code=ERR_POSTGRES_CONNECTION_*` antes de existir uma sessão e
+ * `errno=<SQLSTATE>` quando o servidor chegou a responder. Manter essa
+ * classificação central evita que rate limit, autenticação e rotas de negócio
+ * apresentem a indisponibilidade do banco como um 500 diferente em cada ponto.
+ */
+export function findPostgresUnavailableCode(error: unknown): string | null {
+  let current = error;
+  const visited = new Set<Error>();
+
+  while (current instanceof Error && !visited.has(current)) {
+    visited.add(current);
+
+    const { code, errno } = current as Error & {
+      code?: unknown;
+      errno?: unknown;
+    };
+
+    for (const candidate of [errno, code]) {
+      if (typeof candidate !== "string") continue;
+
+      if (
+        candidate.startsWith("08") ||
+        candidate.startsWith("ERR_POSTGRES_CONNECTION_") ||
+        UNAVAILABLE_DRIVER_CODES.has(candidate) ||
+        UNAVAILABLE_SQL_STATES.has(candidate)
+      ) {
+        return candidate;
+      }
     }
 
     current = current.cause;

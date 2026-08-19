@@ -2,6 +2,7 @@ import { Plus, Search } from "lucide-react";
 import { useMemo, useState } from "react";
 import { Link } from "react-router-dom";
 import { z } from "zod";
+import { PermissionAction, PermissionResource, can } from "@shared/auth/permissions";
 import { SessionSchema } from "@shared/schemas/auth.schema";
 import { RoomResponseSchema, type RoomResponse } from "@shared/schemas/room.schema";
 import { Button } from "@web/components/button";
@@ -28,6 +29,11 @@ export function RoomListPage() {
   const roomsState = useKeyedFetch(`rooms:${version}`, (signal) =>
     api.get("/rooms", RoomListSchema, { signal }),
   );
+  const role = sessionState.status === "ready" ? sessionState.data.role : null;
+  const mayCreate = role !== null && can(role, PermissionAction.CREATE, PermissionResource.ROOM);
+  const mayUpdate = role !== null && can(role, PermissionAction.UPDATE, PermissionResource.ROOM);
+  const mayReadBlocks =
+    role !== null && can(role, PermissionAction.READ, PermissionResource.ROOM_BLOCK);
 
   const filteredRooms = useMemo(() => {
     if (roomsState.status !== "ready") return [];
@@ -57,12 +63,14 @@ export function RoomListPage() {
     <div className="mx-auto max-w-4xl p-6">
       <div className="flex items-center justify-between gap-4">
         <h1 className="text-xl font-semibold">Salas</h1>
-        <Button asChild>
-          <Link to="/admin/rooms/new">
-            <Plus className="h-4 w-4" aria-hidden="true" />
-            Nova sala
-          </Link>
-        </Button>
+        {mayCreate && (
+          <Button asChild>
+            <Link to="/admin/rooms/new">
+              <Plus className="h-4 w-4" aria-hidden="true" />
+              Nova sala
+            </Link>
+          </Button>
+        )}
       </div>
 
       {sessionState.status === "ready" && (
@@ -102,15 +110,21 @@ export function RoomListPage() {
       {roomsState.status === "ready" && roomsState.data.length === 0 && (
         <div className="mt-10 flex flex-col items-center gap-3 text-center">
           <p className="text-sm text-muted-foreground">Você ainda não cadastrou nenhuma sala.</p>
-          <Button asChild>
-            <Link to="/admin/rooms/new">Criar a primeira sala</Link>
-          </Button>
+          {mayCreate && (
+            <Button asChild>
+              <Link to="/admin/rooms/new">Criar a primeira sala</Link>
+            </Button>
+          )}
         </div>
       )}
 
-      {roomsState.status === "ready" && roomsState.data.length > 0 && filteredRooms.length === 0 && (
-        <p className="mt-6 text-sm text-muted-foreground">Nenhuma sala encontrada para "{search}".</p>
-      )}
+      {roomsState.status === "ready" &&
+        roomsState.data.length > 0 &&
+        filteredRooms.length === 0 && (
+          <p className="mt-6 text-sm text-muted-foreground">
+            Nenhuma sala encontrada para "{search}".
+          </p>
+        )}
 
       {filteredRooms.length > 0 && (
         <ul className="mt-6 flex flex-col gap-3">
@@ -125,7 +139,8 @@ export function RoomListPage() {
                   <RoomStatusBadge isActive={room.isActive} />
                 </div>
                 <p className="mt-1 text-sm text-muted-foreground">
-                  Até {room.capacity} pessoas · {currencyFormatter.format(room.hourlyRateInCents / 100)}
+                  Até {room.capacity} pessoas ·{" "}
+                  {currencyFormatter.format(room.hourlyRateInCents / 100)}
                   /hora
                 </p>
               </div>
@@ -133,28 +148,36 @@ export function RoomListPage() {
                 <Button variant="outline" size="sm" asChild>
                   <Link to={`/admin/rooms/${room.id}/schedule`}>Agenda</Link>
                 </Button>
-                <Button variant="outline" size="sm" asChild>
-                  <Link to={`/admin/rooms/${room.id}/edit`}>Editar</Link>
-                </Button>
-                {room.isActive ? (
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    onClick={() => setPendingDeactivation(room)}
-                    disabled={mutatingId === room.id}
-                  >
-                    Desativar
-                  </Button>
-                ) : (
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    onClick={() => toggleActive(room)}
-                    disabled={mutatingId === room.id}
-                  >
-                    Ativar
+                {mayReadBlocks && (
+                  <Button variant="outline" size="sm" asChild>
+                    <Link to={`/admin/rooms/${room.id}/blocks`}>Bloqueios</Link>
                   </Button>
                 )}
+                {mayUpdate && (
+                  <Button variant="outline" size="sm" asChild>
+                    <Link to={`/admin/rooms/${room.id}/edit`}>Editar</Link>
+                  </Button>
+                )}
+                {mayUpdate &&
+                  (room.isActive ? (
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={() => setPendingDeactivation(room)}
+                      disabled={mutatingId === room.id}
+                    >
+                      Desativar
+                    </Button>
+                  ) : (
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={() => toggleActive(room)}
+                      disabled={mutatingId === room.id}
+                    >
+                      Ativar
+                    </Button>
+                  ))}
               </div>
             </li>
           ))}

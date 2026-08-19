@@ -1,9 +1,29 @@
 import type { FastifyInstance } from "fastify";
+import {
+  PermissionAction,
+  PermissionResource,
+  type PermissionAction as PermissionActionType,
+} from "@shared/auth/permissions";
 import { env } from "@services/config/env";
 import { auth } from "../auth/auth";
 import { applyWebHeaders, toWebHeaders } from "./web-headers";
+import { requireAuth } from "./require-auth";
+import { requirePermission } from "./require-permission";
 
 const HANDLED_METHODS = ["GET", "POST"] as const;
+
+const ORGANIZATION_ROUTE_PERMISSION: Record<
+  string,
+  readonly [PermissionActionType, PermissionResource]
+> = {
+  "/api/auth/organization/list-members": [PermissionAction.READ, PermissionResource.TEAM],
+  "/api/auth/organization/list-invitations": [PermissionAction.READ, PermissionResource.TEAM],
+  "/api/auth/organization/get-full-organization": [PermissionAction.READ, PermissionResource.TEAM],
+  "/api/auth/organization/invite-member": [PermissionAction.INVITE, PermissionResource.TEAM],
+  "/api/auth/organization/cancel-invitation": [PermissionAction.INVITE, PermissionResource.TEAM],
+  "/api/auth/organization/update-member-role": [PermissionAction.UPDATE, PermissionResource.TEAM],
+  "/api/auth/organization/remove-member": [PermissionAction.DELETE, PermissionResource.TEAM],
+};
 
 /**
  * Monta o handler do Better Auth em `/api/auth/*`.
@@ -34,6 +54,12 @@ export async function registerAuthHandler(app: FastifyInstance): Promise<void> {
        * um proxy mal configurado reescrever a base da autenticação.
        */
       const url = new URL(request.url, env.BETTER_AUTH_URL);
+      const permission = ORGANIZATION_ROUTE_PERMISSION[url.pathname];
+      if (permission) {
+        await requireAuth(request);
+        await requirePermission(permission[0], permission[1])(request);
+      }
+
       const body = Buffer.isBuffer(request.body) && request.body.length > 0 ? request.body : null;
 
       const response = await auth.handler(

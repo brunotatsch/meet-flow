@@ -1,20 +1,11 @@
 import type { CompanyRepository } from "@services/companies/domain/company.repository";
-import { CompanyNotFoundError } from "@services/companies/domain/errors";
-import { RoomNotFoundError } from "@services/rooms/domain/errors";
 import type { RoomScheduleRepository } from "@services/rooms/domain/room-schedule.repository";
 import type { RoomRepository } from "@services/rooms/domain/room.repository";
-import { resolveOpeningPeriod } from "../domain/availability";
-import { slotsCoveredBy } from "../domain/booking-window";
 import { Booking } from "../domain/booking.entity";
 import type { BookingRepository } from "../domain/booking.repository";
 import type { Clock } from "../domain/clock";
-import {
-  BookingInThePastError,
-  OutsideBusinessHoursError,
-  RoomNotAvailableError,
-} from "../domain/errors";
 import { bookingTotalInCents } from "../domain/slot";
-import { calendarDateAt, weekdayOf } from "../domain/time-zone";
+import { validateBookingPeriod } from "./booking-period-policy";
 
 export interface CreateBookingCommand {
   companyId: string;
@@ -26,10 +17,12 @@ export interface CreateBookingCommand {
   customerEmail: string;
   customerPhone?: string | null;
   notes?: string | null;
+  /** Só a rota autenticada usa `manual`; a rota pública sempre mantém o hold. */
+  confirmationMode?: "checkout" | "manual";
 }
 
 /**
- * Cria a reserva do passo 4 do fluxo público.
+ * Cria reservas do fluxo público e do walk-in autenticado pela mesma política.
  *
  * Duas decisões estruturam o caso de uso:
  *
@@ -54,51 +47,15 @@ export class CreateBookingUseCase {
   ) {}
 
   async execute(command: CreateBookingCommand): Promise<Booking> {
-    const company = await this.companyRepository.findById(command.companyId);
-
-    if (!company) {
-      throw new CompanyNotFoundError(command.companyId);
-    }
-
-    const room = await this.roomRepository.findById(command.roomId, command.companyId);
-
-    if (!room) {
-      throw new RoomNotFoundError(command.roomId);
-    }
-
-    if (!room.isActive) {
-      throw new RoomNotAvailableError(room.id);
-    }
-
-    if (command.startsAt.getTime() <= this.clock.now().getTime()) {
-      throw new BookingInThePastError();
-    }
-
-    /**
-     * O dia da agenda é o dia **no fuso da empresa** em que a reserva começa. Uma
-     * reserva das 21:00 de uma segunda em São Paulo já é terça em UTC, e ler o dia da
-     * semana do instante bruto a checaria contra a janela errada.
-     */
-    const date = calendarDateAt(company.timezone, command.startsAt);
-    const schedule = await this.roomScheduleRepository.findByRoomAndWeekday(
-      room.id,
-      weekdayOf(date),
-    );
-
-    if (!schedule) {
-      throw new OutsideBusinessHoursError("A sala não abre no dia escolhido.");
-    }
-
-    const period = resolveOpeningPeriod(company.timezone, date, {
-      opensAtMinutes: schedule.opensAtMinutes,
-      closesAtMinutes: schedule.closesAtMinutes,
-      slotMinutes: schedule.slotMinutes,
-    });
-
-    const slotCount = slotsCoveredBy(
-      { startsAt: command.startsAt, endsAt: command.endsAt },
-      period,
-      schedule.slotMinutes,
+    const now = this.clock.now();
+    const { company, room, schedule, slotCount } = await validateBookingPeriod(
+      command,
+      {
+        companyRepository: this.companyRepository,
+        roomRepository: this.roomRepository,
+        roomScheduleRepository: this.roomScheduleRepository,
+      },
+      now,
     );
 
     const booking = Booking.create({
@@ -112,8 +69,13 @@ export class CreateBookingUseCase {
       endsAt: command.endsAt,
       slotMinutes: schedule.slotMinutes,
       totalInCents: bookingTotalInCents(room.hourlyRateInCents, schedule.slotMinutes, slotCount),
+      now,
     });
 
+    if (command.confirmationMode === "manual") booking.confirmManually(now);
+
+    // Expiração lazy: libera a constraint mesmo quando nenhum cron externo rodou.
+    await this.bookingRepository.expirePending(now, company.id, room.id);
     await this.bookingRepository.create(booking);
 
     return booking;

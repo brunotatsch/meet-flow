@@ -1,4 +1,11 @@
 import { organization } from "better-auth/plugins/organization";
+import { organizationAccessControl, organizationRoles } from "@shared/auth/organization-access";
+
+type OrganizationOptions = NonNullable<Parameters<typeof organization>[0]>;
+
+export interface AuthPluginOptions {
+  sendInvitationEmail?: OrganizationOptions["sendInvitationEmail"];
+}
 
 /**
  * Lista de plugins do Better Auth, isolada de `auth.ts` de propósito.
@@ -13,14 +20,23 @@ import { organization } from "better-auth/plugins/organization";
  * Uma organização sem `company` seria um tenant sem perfil de negócio, e
  * `requireAuth` não teria `companyId` para resolver.
  */
-const organizationPlugin = organization({
-  allowUserToCreateOrganization: false,
-  creatorRole: "owner",
-});
+export function createAuthPlugins(options: AuthPluginOptions = {}) {
+  const organizationPlugin = organization({
+    allowUserToCreateOrganization: false,
+    creatorRole: "owner",
+    invitationExpiresIn: 48 * 60 * 60,
+    cancelPendingInvitationsOnReInvite: true,
+    sendInvitationEmail: options.sendInvitationEmail,
+    ac: organizationAccessControl,
+    roles: organizationRoles,
+  });
+
+  return [organizationPlugin] as [typeof organizationPlugin];
+}
 
 /**
  * A anotação de tupla não é decorativa: sem ela o TypeScript alarga o literal para
  * `Plugin[]` e o `betterAuth()` perde a inferência dos campos que o plugin adiciona,
  * a começar por `session.activeOrganizationId`, que `requireAuth` lê.
  */
-export const authPlugins: [typeof organizationPlugin] = [organizationPlugin];
+export const authPlugins = createAuthPlugins();

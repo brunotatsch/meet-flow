@@ -4,6 +4,7 @@ import type { Response as InjectResponse } from "light-my-request";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { bookings } from "@services/bookings/infra/database/schema/bookings";
 import { buildServer } from "@services/http/server";
+import { FakeStripeGateway } from "./billing/fake-stripe-gateway";
 import { createTestDatabase, type TestDatabase } from "./setup/test-database";
 
 /**
@@ -51,7 +52,7 @@ async function signUpCompany(email: string, slug: string, name: string): Promise
 }
 
 beforeAll(async () => {
-  app = buildServer();
+  app = buildServer({ api: { billing: { stripeGateway: new FakeStripeGateway() } } });
   await app.ready();
   database = createTestDatabase();
 });
@@ -111,7 +112,8 @@ describe("fluxo crítico ponta a ponta", () => {
       },
     });
     expect(bookingResponse.statusCode).toBe(201);
-    const bookingId = bookingResponse.json().id as string;
+    const bookingId = bookingResponse.json().booking.id as string;
+    expect(bookingResponse.json().checkout.url).toMatch(/^https:\/\/checkout\.stripe\.test\//);
 
     const afterBooking = await availability();
     expect(afterBooking.json().slots[0]).toMatchObject({ startsAt: NINE, available: false });
@@ -129,7 +131,7 @@ describe("fluxo crítico ponta a ponta", () => {
         roomId,
         customerName: "Ana Prado",
         customerEmail: "ana@exemplo.com",
-        status: "confirmed",
+        status: "pending",
       }),
     );
 
@@ -153,11 +155,11 @@ describe("fluxo crítico ponta a ponta", () => {
     });
     expect(blockedCancel.statusCode).toBe(404);
 
-    const [stillConfirmed] = await database.db
+    const [stillPending] = await database.db
       .select()
       .from(bookings)
       .where(eq(bookings.id, bookingId));
-    expect(stillConfirmed?.status).toBe("confirmed");
+    expect(stillPending?.status).toBe("pending");
 
     const cancelResponse = await app.inject({
       method: "DELETE",

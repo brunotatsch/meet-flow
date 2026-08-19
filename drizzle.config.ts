@@ -1,7 +1,7 @@
 import { defineConfig } from "drizzle-kit";
-import { loadEnv } from "./src/services/config/env";
+import { loadDirectDatabaseUrl } from "./src/services/config/database-env";
 
-const env = loadEnv();
+const databaseUrl = loadDirectDatabaseUrl();
 
 export default defineConfig({
   dialect: "postgresql",
@@ -9,6 +9,6 @@ export default defineConfig({
   out: "drizzle",
   casing: "snake_case",
   dbCredentials: {
-    url: env.DATABASE_URL,
+    url: databaseUrl,
   },
 });

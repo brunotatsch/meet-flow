@@ -7,7 +7,6 @@ const STEP_LABEL: Record<WizardStep, string> = {
   horario: "Data e horário",
   dados: "Seus dados",
   revisao: "Revisão",
-  sucesso: "Confirmado",
 };
 
 export function StepIndicator({ current }: { current: WizardStep }) {

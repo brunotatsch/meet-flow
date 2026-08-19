@@ -16,3 +16,15 @@ export { companies, companyType } from "@services/companies/infra/database/schem
 export { rooms } from "@services/rooms/infra/database/schema/rooms";
 export { roomSchedules } from "@services/rooms/infra/database/schema/room-schedules";
 export { bookings, bookingStatus } from "@services/bookings/infra/database/schema/bookings";
+export { auditEvents } from "@services/audit/infra/database/schema/audit-events";
+export { roomBlocks } from "@services/room-blocks/infra/database/schema/room-blocks";
+export {
+  stripeEvents,
+  subscriptions,
+  subscriptionStatus,
+} from "@services/billing/infra/database/schema/billing";
+export {
+  emailOutbox,
+  emailOutboxKind,
+  emailOutboxStatus,
+} from "@services/notifications/infra/database/schema/email-outbox";

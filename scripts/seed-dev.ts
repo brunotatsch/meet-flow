@@ -1,5 +1,16 @@
-import { SignUpConflictError, signUp } from "@services/identity/infra/auth/sign-up";
-import { SignUpSchema } from "@shared/schemas/company.schema";
+import { loadDirectDatabaseUrl } from "@services/config/database-env";
+
+/**
+ * O seed é uma operação administrativa one-shot. Sobrescrever a URL antes dos
+ * imports dinâmicos faz todo o grafo Drizzle/Better Auth usar a conexão direta,
+ * sem criar um segundo caminho de cadastro.
+ */
+process.env.DATABASE_URL = loadDirectDatabaseUrl();
+
+const [{ SignUpConflictError, signUp }, { SignUpSchema }] = await Promise.all([
+  import("@services/identity/infra/auth/sign-up"),
+  import("@shared/schemas/company.schema"),
+]);
 
 /**
  * Seed de desenvolvimento: cria uma empresa e um usuário `owner` prontos para logar
@@ -39,4 +50,6 @@ try {
   }
 }
 
-console.log(`Login em /admin/login -> e-mail: ${SEED_INPUT.user.email} | senha: ${SEED_INPUT.user.password}`);
+console.log(
+  `Login em /admin/login -> e-mail: ${SEED_INPUT.user.email} | senha: ${SEED_INPUT.user.password}`,
+);

@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { AppRole } from "@shared/auth/permissions";
 import { CompanyPublicSchema } from "@shared/schemas/company.schema";
 import { NormalizedEmail } from "@shared/schemas/email";
 
@@ -21,13 +22,12 @@ export type AuthenticatedUser = z.infer<typeof AuthenticatedUserSchema>;
 /**
  * Resposta de `GET /api/v1/me` e de `POST /api/v1/sign-up`.
  *
- * `role` é `string` porque é o que a coluna `member.role` guarda: o conjunto de
- * papéis só passa a ser fechado quando a MVP-11 introduzir RBAC de verdade.
+ * O papel é um conjunto fechado compartilhado com a matriz de autorização.
  */
 export const SessionSchema = z.object({
   user: AuthenticatedUserSchema,
   company: CompanyPublicSchema,
-  role: z.string(),
+  role: z.enum([AppRole.OWNER, AppRole.MANAGER, AppRole.STAFF]),
 });
 
 export type Session = z.infer<typeof SessionSchema>;

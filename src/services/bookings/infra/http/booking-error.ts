@@ -3,10 +3,12 @@ import { HttpError } from "@services/http/http-error";
 import { RoomNotFoundError } from "@services/rooms/domain/errors";
 import {
   BookingConflictError,
+  CheckInOutsideWindowError,
   BookingInThePastError,
   BookingNotFoundError,
   InvalidAvailabilityDateError,
   InvalidBookingDataError,
+  InvalidBookingTransitionError,
   OutsideBusinessHoursError,
   RoomNotAvailableError,
   SlotNotAlignedError,
@@ -35,6 +37,14 @@ import {
 export function mapBookingError(error: unknown): never {
   if (error instanceof BookingConflictError) {
     throw new HttpError(409, "BOOKING_CONFLICT", error.message);
+  }
+
+  if (error instanceof CheckInOutsideWindowError) {
+    throw new HttpError(409, "CHECK_IN_OUTSIDE_WINDOW_CONFIRMATION_REQUIRED", error.message);
+  }
+
+  if (error instanceof InvalidBookingTransitionError) {
+    throw new HttpError(409, "INVALID_BOOKING_TRANSITION", error.message);
   }
 
   if (error instanceof BookingNotFoundError) {

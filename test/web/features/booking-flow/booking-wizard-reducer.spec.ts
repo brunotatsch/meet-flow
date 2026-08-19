@@ -1,5 +1,4 @@
 import { describe, expect, it } from "vitest";
-import type { BookingResponse } from "@shared/schemas/booking.schema";
 import type { PublicRoomResponse } from "@shared/schemas/room.schema";
 import {
   bookingWizardReducer,
@@ -16,22 +15,6 @@ const room: PublicRoomResponse = {
   hourlyRateInCents: 12_000,
   amenities: [],
   photoUrl: null,
-};
-
-const booking: BookingResponse = {
-  id: "booking-1",
-  companyId: "company-1",
-  roomId: "room-1",
-  customerName: "Ana Prado",
-  customerEmail: "ana@exemplo.com",
-  customerPhone: null,
-  startsAt: "2030-06-04T09:00:00-03:00",
-  endsAt: "2030-06-04T10:00:00-03:00",
-  status: "confirmed",
-  totalInCents: 12_000,
-  notes: null,
-  createdAt: "2030-06-04T00:00:00.000Z",
-  updatedAt: "2030-06-04T00:00:00.000Z",
 };
 
 describe("bookingWizardReducer", () => {
@@ -57,7 +40,11 @@ describe("bookingWizardReducer", () => {
       type: "SELECT_SLOT",
       date: "2030-06-04",
       timezone: "America/Sao_Paulo",
-      slot: { startsAt: "2030-06-04T09:00:00-03:00", endsAt: "2030-06-04T10:00:00-03:00", priceInCents: 12_000 },
+      slot: {
+        startsAt: "2030-06-04T09:00:00-03:00",
+        endsAt: "2030-06-04T10:00:00-03:00",
+        priceInCents: 12_000,
+      },
     });
 
     expect(next.step).toBe("dados");
@@ -75,13 +62,6 @@ describe("bookingWizardReducer", () => {
     expect(next.customer).toEqual({ customerName: "Ana Prado", customerEmail: "ana@exemplo.com" });
   });
 
-  it("CONFIRM_SUCCESS avança para sucesso com a reserva", () => {
-    const next = bookingWizardReducer(initialBookingWizardState, { type: "CONFIRM_SUCCESS", booking });
-
-    expect(next.step).toBe("sucesso");
-    expect(next.booking).toBe(booking);
-  });
-
   it("BACK volta um passo na ordem navegável", () => {
     const atRevisao: BookingWizardState = { ...initialBookingWizardState, step: "revisao" };
 
@@ -97,7 +77,11 @@ describe("bookingWizardReducer", () => {
       ...initialBookingWizardState,
       step: "revisao",
       room,
-      slot: { startsAt: "2030-06-04T09:00:00-03:00", endsAt: "2030-06-04T10:00:00-03:00", priceInCents: 12_000 },
+      slot: {
+        startsAt: "2030-06-04T09:00:00-03:00",
+        endsAt: "2030-06-04T10:00:00-03:00",
+        priceInCents: 12_000,
+      },
     };
 
     const next = bookingWizardReducer(atRevisao, { type: "SLOT_NO_LONGER_AVAILABLE" });
@@ -106,12 +90,6 @@ describe("bookingWizardReducer", () => {
     expect(next.slot).toBeNull();
     expect(next.room).toBe(room); // a sala continua escolhida, só o horário caiu
     expect(next.notice).toBe(SLOT_CONFLICT_NOTICE);
-  });
-
-  it("RESTART volta ao estado inicial", () => {
-    const atSucesso: BookingWizardState = { ...initialBookingWizardState, step: "sucesso", booking, room };
-
-    expect(bookingWizardReducer(atSucesso, { type: "RESTART" })).toEqual(initialBookingWizardState);
   });
 
   it("HYDRATE mescla o estado parcial vindo da URL", () => {

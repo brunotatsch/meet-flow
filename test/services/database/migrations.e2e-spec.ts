@@ -27,17 +27,34 @@ afterAll(async () => {
  */
 describe("migrations", () => {
   it("é idempotente: reaplicar sobre um banco já migrado não faz nada", async () => {
-    const failure = await captureSqlFailure(() => runMigrations(process.env.DATABASE_URL!));
+    const failure = await captureSqlFailure(() => runMigrations(process.env.DIRECT_DATABASE_URL!));
 
     expect(failure).toBeNull();
   });
 
-  it("instala a extensão btree_gist exigida pela constraint de exclusão", async () => {
+  it("instala btree_gist no schema de extensões usado pelo Supabase", async () => {
     const rows = await database.client.unsafe(
-      "SELECT extname FROM pg_extension WHERE extname = 'btree_gist'",
+      `SELECT e.extname, n.nspname AS schema_name
+         FROM pg_extension e
+         JOIN pg_namespace n ON n.oid = e.extnamespace
+        WHERE e.extname = 'btree_gist'`,
     );
 
-    expect(rows).toHaveLength(1);
+    expect(rows).toEqual([{ extname: "btree_gist", schema_name: "extensions" }]);
+  });
+
+  it("habilita RLS em toda tabela exposta pelo schema public", async () => {
+    const rows = await database.client.unsafe(
+      `SELECT c.relname
+         FROM pg_class c
+         JOIN pg_namespace n ON n.oid = c.relnamespace
+        WHERE n.nspname = 'public'
+          AND c.relkind = 'r'
+          AND NOT c.relrowsecurity
+        ORDER BY c.relname`,
+    );
+
+    expect(rows).toEqual([]);
   });
 
   it("cria bookings_no_overlap como EXCLUDE, ignorando reservas canceladas", async () => {
@@ -111,6 +128,7 @@ describe("coluna gerada bookings.period", () => {
         customerEmail: "caio@exemplo.com",
         startsAt: new Date("2026-10-05T12:00:00.000Z"),
         endsAt: new Date("2026-10-05T13:00:00.000Z"),
+        status: "confirmed",
         totalInCents: 10_000,
       })
       .returning();

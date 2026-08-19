@@ -13,17 +13,20 @@ const STATUS_CLASSES: Record<BookingResponse["status"], string> = {
   confirmed: "border-primary/50 bg-primary/15 text-foreground",
   cancelled: "border-border bg-muted text-muted-foreground line-through",
   completed: "border-border bg-secondary text-secondary-foreground",
+  no_show: "border-orange-600/50 bg-orange-500/15 text-orange-900 dark:text-orange-200",
 };
 
 export function BookingBlock({
   booking,
   date,
   timezone,
+  canReschedule,
   onSelect,
 }: {
   booking: BookingResponse;
   date: string;
   timezone: string;
+  canReschedule: boolean;
   onSelect: (booking: BookingResponse) => void;
 }) {
   const { startMinutes, endMinutes } = bookingBlockPosition(
@@ -38,6 +41,11 @@ export function BookingBlock({
   return (
     <button
       type="button"
+      draggable={canReschedule && booking.status === "confirmed" && booking.checkedInAt === null}
+      onDragStart={(event) => {
+        event.dataTransfer.setData("application/x-meet-flow-booking", booking.id);
+        event.dataTransfer.effectAllowed = "move";
+      }}
       onClick={() => onSelect(booking)}
       style={{ top, height }}
       className={cn(
@@ -48,8 +56,8 @@ export function BookingBlock({
     >
       <span className="block truncate font-medium">{booking.customerName}</span>
       <span className="block truncate opacity-80">
-        {formatTimeInZone(booking.startsAt, timezone)}–{formatTimeInZone(booking.endsAt, timezone)} ·{" "}
-        {STATUS_LABEL[booking.status]}
+        {formatTimeInZone(booking.startsAt, timezone)}–{formatTimeInZone(booking.endsAt, timezone)}{" "}
+        · {STATUS_LABEL[booking.status]}
       </span>
     </button>
   );

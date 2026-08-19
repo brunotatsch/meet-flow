@@ -1,6 +1,10 @@
 import { describe, expect, it } from "vitest";
 import { BookingStatus } from "@shared/enums/booking-status";
-import { Booking, type CreateBookingProps } from "@services/bookings/domain/booking.entity";
+import {
+  BOOKING_HOLD_MINUTES,
+  Booking,
+  type CreateBookingProps,
+} from "@services/bookings/domain/booking.entity";
 import { InvalidBookingDataError } from "@services/bookings/domain/errors";
 
 const COMPANY_ID = "11111111-1111-4111-8111-111111111111";
@@ -24,8 +28,12 @@ function create(overrides: Partial<CreateBookingProps> = {}): Booking {
 }
 
 describe("Booking.create", () => {
-  it("nasce confirmada, porque o MVP ainda não tem etapa de pagamento", () => {
-    expect(create().status).toBe(BookingStatus.CONFIRMED);
+  it("nasce pending com hold durável de 31 minutos", () => {
+    const now = new Date("2026-08-01T00:00:00.000Z");
+    const booking = create({ now });
+
+    expect(booking.status).toBe(BookingStatus.PENDING);
+    expect(booking.expiresAt).toEqual(new Date(now.getTime() + BOOKING_HOLD_MINUTES * 60_000));
   });
 
   it("preenche id, carimbos e os opcionais ausentes", () => {
@@ -74,6 +82,27 @@ describe("Booking.create", () => {
   it("recusa total fracionado ou negativo", () => {
     expect(() => create({ totalInCents: 100.5 })).toThrow(InvalidBookingDataError);
     expect(() => create({ totalInCents: -1 })).toThrow(InvalidBookingDataError);
+  });
+});
+
+describe("Booking.confirm", () => {
+  it("confirma hold vigente e persiste o payment intent", () => {
+    const now = new Date("2026-08-01T00:00:00.000Z");
+    const booking = create({ now });
+
+    expect(booking.confirm(new Date(now.getTime() + 1_000), "pi_123")).toBe(true);
+    expect(booking.status).toBe(BookingStatus.CONFIRMED);
+    expect(booking.stripePaymentIntentId).toBe("pi_123");
+    expect(booking.confirm(now, "pi_other")).toBe(false);
+  });
+
+  it("nunca confirma hold vencido e o cancela como expired", () => {
+    const now = new Date("2026-08-01T00:00:00.000Z");
+    const booking = create({ now });
+
+    expect(booking.confirm(booking.expiresAt!)).toBe(false);
+    expect(booking.status).toBe(BookingStatus.CANCELLED);
+    expect(booking.cancellationReason).toBe("expired");
   });
 });
 

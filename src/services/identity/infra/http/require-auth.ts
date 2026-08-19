@@ -1,5 +1,6 @@
 import { and, eq } from "drizzle-orm";
 import type { FastifyRequest } from "fastify";
+import { isAppRole, type AppRole } from "@shared/auth/permissions";
 import { companies } from "@services/companies/infra/database/schema/companies";
 import { db } from "@services/database/client";
 import { HttpError } from "@services/http/http-error";
@@ -18,8 +19,8 @@ export interface RequestAuth {
   userId: string;
   companyId: string;
   organizationId: string;
-  /** Papel do usuário na organização ativa. O conjunto fechado chega com a MVP-11. */
-  role: string;
+  /** Papel validado contra a matriz fechada antes de qualquer autorização. */
+  role: AppRole;
 }
 
 declare module "fastify" {
@@ -101,6 +102,14 @@ export async function requireAuth(request: FastifyRequest): Promise<void> {
       403,
       "NO_ACTIVE_COMPANY",
       "Usuário autenticado não está vinculado a nenhuma empresa ativa.",
+    );
+  }
+
+  if (!isAppRole(membership.role)) {
+    throw new HttpError(
+      403,
+      "INVALID_MEMBER_ROLE",
+      "O papel deste membro não é reconhecido. Contate um owner da equipe.",
     );
   }
 

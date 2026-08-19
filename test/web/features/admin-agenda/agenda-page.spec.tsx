@@ -48,6 +48,8 @@ function bookingFixture(overrides: Record<string, unknown> = {}) {
     status: "confirmed",
     totalInCents: 12_000,
     notes: null,
+    expiresAt: null,
+    stripeCheckoutSessionId: null,
     createdAt: "2030-01-01T00:00:00.000Z",
     updatedAt: "2030-01-01T00:00:00.000Z",
     ...overrides,

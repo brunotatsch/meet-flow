@@ -34,7 +34,7 @@ const sharedForbiddenPatterns = [
 
 export default tseslint.config(
   {
-    ignores: ["dist/**", "node_modules/**", "coverage/**", "drizzle/**"],
+    ignores: ["dist/**", "node_modules/**", "coverage/**", "drizzle/**", "supabase/.temp/**"],
   },
   js.configs.recommended,
   ...tseslint.configs.recommended,

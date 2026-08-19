@@ -5,6 +5,7 @@ export const BookingStatus = {
   CONFIRMED: "confirmed",
   CANCELLED: "cancelled",
   COMPLETED: "completed",
+  NO_SHOW: "no_show",
 } as const;
 
 export type BookingStatus = (typeof BookingStatus)[keyof typeof BookingStatus];

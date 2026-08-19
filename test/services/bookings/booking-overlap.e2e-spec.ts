@@ -36,6 +36,7 @@ function bookingAt(
     customerEmail: "ana@exemplo.com",
     startsAt,
     endsAt,
+    status: "confirmed" as const,
     totalInCents: 15_000,
     ...overrides,
   } satisfies typeof bookings.$inferInsert;

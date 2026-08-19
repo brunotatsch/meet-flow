@@ -1,4 +1,5 @@
 import type { SignUpInput } from "@shared/schemas/company.schema";
+import { AppRole } from "@shared/auth/permissions";
 import type { Session } from "@shared/schemas/auth.schema";
 import { companies } from "@services/companies/infra/database/schema/companies";
 import { db } from "@services/database/client";
@@ -164,7 +165,7 @@ async function runSignUpTransaction(
         throw new Error("Cadastro não retornou as linhas criadas.");
       }
 
-      return { user: createdUser, company: createdCompany, role: createdMember.role };
+      return { user: createdUser, company: createdCompany, role: AppRole.OWNER };
     });
   } catch (error) {
     throw toSignUpError(error);

@@ -36,10 +36,12 @@ describe("interrupção de requisição a partir de um preHandler", () => {
     const response = await app.inject({ method: "GET", url: "/protegida" });
 
     expect(response.statusCode).toBe(401);
-    expect(response.json()).toEqual({
+    expect(response.json()).toMatchObject({
       code: "UNAUTHENTICATED",
       message: "Sessão ausente ou expirada.",
     });
+    expect(response.json().requestId).toBe(response.headers["x-request-id"] ?? "req-1");
+    expect(response.headers["cache-control"]).toBe("private, no-store, max-age=0");
     expect(handlerRan).toBe(false);
 
     await app.close();
@@ -70,6 +72,60 @@ describe("interrupção de requisição a partir de um preHandler", () => {
     const response = await app.inject({ method: "GET", url: "/quebrada" });
 
     expect(response.statusCode).toBe(500);
-    expect(response.json()).toEqual({ code: "INTERNAL_ERROR", message: "Erro interno." });
+    expect(response.json()).toMatchObject({ code: "INTERNAL_ERROR", message: "Erro interno." });
+    expect(response.body).not.toContain("hunter2");
+    expect(response.body).not.toContain("senha=");
+    expect(response.json().requestId).toBe("req-1");
+  });
+
+  it("traduz indisponibilidade do Postgres para 503 sem vazar detalhes", async () => {
+    const app = Fastify({ logger: false });
+    registerErrorHandler(app);
+
+    app.get("/database", async () => {
+      const postgresError = Object.assign(new Error("password=segredo-super-secreto"), {
+        code: "ERR_POSTGRES_CONNECTION_CLOSED",
+      });
+
+      throw new Error("query failed", { cause: postgresError });
+    });
+
+    const response = await app.inject({ method: "GET", url: "/database" });
+
+    expect(response.statusCode).toBe(503);
+    expect(response.json()).toEqual({
+      code: "SERVICE_UNAVAILABLE",
+      message: "Serviço temporariamente indisponível. Tente novamente.",
+      requestId: "req-1",
+    });
+    expect(response.headers["retry-after"]).toBe("5");
+    expect(response.headers["cache-control"]).toBe("private, no-store, max-age=0");
+    expect(response.body).not.toContain("segredo-super-secreto");
+
+    await app.close();
+  });
+
+  it("não confia em mensagem/status 4xx forjados por uma dependência", async () => {
+    const app = Fastify({ logger: false });
+    registerErrorHandler(app);
+
+    app.get("/upstream", async () => {
+      throw Object.assign(new Error("token=segredo-interno"), {
+        statusCode: 400,
+        code: "UPSTREAM_BAD_REQUEST",
+      });
+    });
+
+    const response = await app.inject({ method: "GET", url: "/upstream" });
+
+    expect(response.statusCode).toBe(400);
+    expect(response.json()).toMatchObject({
+      code: "BAD_REQUEST",
+      message: "Requisição inválida.",
+      requestId: "req-1",
+    });
+    expect(response.body).not.toContain("segredo-interno");
+
+    await app.close();
   });
 });

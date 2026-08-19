@@ -1,5 +1,9 @@
 import { organizationClient } from "better-auth/client/plugins";
 import { createAuthClient } from "better-auth/react";
+import {
+  organizationAccessControl,
+  organizationRoles,
+} from "@shared/auth/organization-access";
 
 /**
  * Sem `baseURL`: o client do better-auth cai no fallback `window.location.origin`
@@ -17,7 +21,7 @@ import { createAuthClient } from "better-auth/react";
  * teria `activeOrganizationId` tipado no client.
  */
 export const authClient = createAuthClient({
-  plugins: [organizationClient()],
+  plugins: [organizationClient({ ac: organizationAccessControl, roles: organizationRoles })],
 });
 
 export const { useSession, signIn, signOut } = authClient;

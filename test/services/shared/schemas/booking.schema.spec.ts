@@ -178,6 +178,8 @@ describe("BookingResponseSchema", () => {
       status: "confirmed",
       totalInCents: 5000,
       notes: null,
+      expiresAt: null,
+      stripeCheckoutSessionId: null,
       createdAt: "2026-01-01T09:00:00.000Z",
       updatedAt: "2026-01-01T09:00:00.000Z",
     };
@@ -198,6 +200,8 @@ describe("BookingResponseSchema", () => {
       status: "confirmed",
       totalInCents: 5000,
       notes: null,
+      expiresAt: "2026-01-01T09:31:00.000Z",
+      stripeCheckoutSessionId: "cs_test_123",
       createdAt: "2026-01-01T09:00:00.000Z",
       updatedAt: "2026-01-01T09:00:00.000Z",
     };
@@ -218,6 +222,8 @@ describe("BookingResponseSchema", () => {
       status: "unknown",
       totalInCents: 5000,
       notes: null,
+      expiresAt: null,
+      stripeCheckoutSessionId: null,
       createdAt: "2026-01-01T09:00:00.000Z",
       updatedAt: "2026-01-01T09:00:00.000Z",
     };

@@ -5,6 +5,14 @@ import { createMemoryRouter, RouterProvider } from "react-router-dom";
 import { BookingWizard } from "@web/features/booking-flow/booking-wizard";
 import { PublicBookingLayout } from "@web/layouts/public-booking-layout";
 
+const { redirectToExternalUrlMock } = vi.hoisted(() => ({
+  redirectToExternalUrlMock: vi.fn(),
+}));
+
+vi.mock("@web/lib/external-navigation", () => ({
+  redirectToExternalUrl: redirectToExternalUrlMock,
+}));
+
 const room = {
   id: "11111111-1111-4111-8111-111111111111",
   name: "Sala Atlântico",
@@ -25,15 +33,33 @@ function availabilityFixture() {
     date: iso,
     timezone: "America/Sao_Paulo",
     slots: [
-      { startsAt: `${iso}T09:00:00-03:00`, endsAt: `${iso}T10:00:00-03:00`, available: true, priceInCents: 12_000 },
-      { startsAt: `${iso}T10:00:00-03:00`, endsAt: `${iso}T11:00:00-03:00`, available: false, priceInCents: 12_000 },
-      { startsAt: `${iso}T11:00:00-03:00`, endsAt: `${iso}T12:00:00-03:00`, available: true, priceInCents: 12_000 },
+      {
+        startsAt: `${iso}T09:00:00-03:00`,
+        endsAt: `${iso}T10:00:00-03:00`,
+        available: true,
+        priceInCents: 12_000,
+      },
+      {
+        startsAt: `${iso}T10:00:00-03:00`,
+        endsAt: `${iso}T11:00:00-03:00`,
+        available: false,
+        priceInCents: 12_000,
+      },
+      {
+        startsAt: `${iso}T11:00:00-03:00`,
+        endsAt: `${iso}T12:00:00-03:00`,
+        available: true,
+        priceInCents: 12_000,
+      },
     ],
   };
 }
 
 function jsonResponse(status: number, body: unknown): Response {
-  return new Response(JSON.stringify(body), { status, headers: { "Content-Type": "application/json" } });
+  return new Response(JSON.stringify(body), {
+    status,
+    headers: { "Content-Type": "application/json" },
+  });
 }
 
 function renderWizard(initialPath = "/hotel-central/agendar") {
@@ -69,10 +95,11 @@ async function advanceToReview(user: ReturnType<typeof userEvent.setup>) {
 
 afterEach(() => {
   vi.unstubAllGlobals();
+  redirectToExternalUrlMock.mockReset();
 });
 
 describe("BookingWizard", () => {
-  it("completa o caminho feliz: sala -> horário -> dados -> revisão -> sucesso", async () => {
+  it("cria o hold no passo de revisão e redireciona para o Checkout", async () => {
     const user = userEvent.setup();
     const availability = availabilityFixture();
 
@@ -80,23 +107,33 @@ describe("BookingWizard", () => {
       "fetch",
       vi.fn((input: string) => {
         if (input.endsWith("/rooms")) return Promise.resolve(jsonResponse(200, [room]));
-        if (input.includes("/availability")) return Promise.resolve(jsonResponse(200, availability));
+        if (input.includes("/availability"))
+          return Promise.resolve(jsonResponse(200, availability));
         if (input.endsWith("/bookings")) {
           return Promise.resolve(
             jsonResponse(201, {
-              id: "22222222-2222-4222-8222-222222222222",
-              companyId: "33333333-3333-4333-8333-333333333333",
-              roomId: room.id,
-              customerName: "Ana Prado",
-              customerEmail: "ana@exemplo.com",
-              customerPhone: null,
-              startsAt: availability.slots[0]!.startsAt,
-              endsAt: availability.slots[0]!.endsAt,
-              status: "confirmed",
-              totalInCents: 12_000,
-              notes: null,
-              createdAt: "2030-01-01T00:00:00.000Z",
-              updatedAt: "2030-01-01T00:00:00.000Z",
+              booking: {
+                id: "22222222-2222-4222-8222-222222222222",
+                companyId: "33333333-3333-4333-8333-333333333333",
+                roomId: room.id,
+                customerName: "Ana Prado",
+                customerEmail: "ana@exemplo.com",
+                customerPhone: null,
+                startsAt: availability.slots[0]!.startsAt,
+                endsAt: availability.slots[0]!.endsAt,
+                status: "pending",
+                totalInCents: 12_000,
+                notes: null,
+                expiresAt: "2030-01-01T00:15:00.000Z",
+                stripeCheckoutSessionId: "cs_test_booking",
+                createdAt: "2030-01-01T00:00:00.000Z",
+                updatedAt: "2030-01-01T00:00:00.000Z",
+              },
+              checkout: {
+                sessionId: "cs_test_booking",
+                url: "https://checkout.stripe.com/c/pay/cs_test_booking",
+                expiresAt: "2030-01-01T00:15:00.000Z",
+              },
             }),
           );
         }
@@ -109,10 +146,13 @@ describe("BookingWizard", () => {
 
     expect(screen.getByText("Sala Atlântico")).toBeInTheDocument();
 
-    await user.click(screen.getByRole("button", { name: "Confirmar reserva" }));
+    await user.click(screen.getByRole("button", { name: "Ir para pagamento" }));
 
-    await screen.findByText("Reserva confirmada");
-    expect(screen.getByText("22222222-2222-4222-8222-222222222222")).toBeInTheDocument();
+    await waitFor(() =>
+      expect(redirectToExternalUrlMock).toHaveBeenCalledWith(
+        "https://checkout.stripe.com/c/pay/cs_test_booking",
+      ),
+    );
   });
 
   it("no 409 ao confirmar, mostra mensagem clara e devolve ao passo de horário", async () => {
@@ -123,7 +163,8 @@ describe("BookingWizard", () => {
       "fetch",
       vi.fn((input: string) => {
         if (input.endsWith("/rooms")) return Promise.resolve(jsonResponse(200, [room]));
-        if (input.includes("/availability")) return Promise.resolve(jsonResponse(200, availability));
+        if (input.includes("/availability"))
+          return Promise.resolve(jsonResponse(200, availability));
         if (input.endsWith("/bookings")) {
           return Promise.resolve(
             jsonResponse(409, {
@@ -139,7 +180,7 @@ describe("BookingWizard", () => {
     renderWizard();
     await advanceToReview(user);
 
-    await user.click(screen.getByRole("button", { name: "Confirmar reserva" }));
+    await user.click(screen.getByRole("button", { name: "Ir para pagamento" }));
 
     await screen.findByRole("heading", { name: "Data e horário" });
     expect(
@@ -153,6 +194,39 @@ describe("BookingWizard", () => {
     );
   });
 
+  it("mantém a revisão e não redireciona quando o Checkout está indisponível", async () => {
+    const user = userEvent.setup();
+    const availability = availabilityFixture();
+
+    vi.stubGlobal(
+      "fetch",
+      vi.fn((input: string) => {
+        if (input.endsWith("/rooms")) return Promise.resolve(jsonResponse(200, [room]));
+        if (input.includes("/availability"))
+          return Promise.resolve(jsonResponse(200, availability));
+        if (input.endsWith("/bookings")) {
+          return Promise.resolve(
+            jsonResponse(503, {
+              code: "CHECKOUT_UNAVAILABLE",
+              message: "Pagamento temporariamente indisponível.",
+            }),
+          );
+        }
+        throw new Error(`fetch não mockado para ${input}`);
+      }),
+    );
+
+    renderWizard();
+    await advanceToReview(user);
+    await user.click(screen.getByRole("button", { name: "Ir para pagamento" }));
+
+    expect(await screen.findByRole("alert")).toHaveTextContent(
+      "Pagamento temporariamente indisponível.",
+    );
+    expect(redirectToExternalUrlMock).not.toHaveBeenCalled();
+    expect(screen.getByRole("heading", { name: "Revise e confirme" })).toBeInTheDocument();
+  });
+
   it('preserva o horário escolhido ao clicar "Voltar" a partir do passo de dados', async () => {
     const user = userEvent.setup();
     const availability = availabilityFixture();
@@ -161,7 +235,8 @@ describe("BookingWizard", () => {
       "fetch",
       vi.fn((input: string) => {
         if (input.endsWith("/rooms")) return Promise.resolve(jsonResponse(200, [room]));
-        if (input.includes("/availability")) return Promise.resolve(jsonResponse(200, availability));
+        if (input.includes("/availability"))
+          return Promise.resolve(jsonResponse(200, availability));
         throw new Error(`fetch não mockado para ${input}`);
       }),
     );
@@ -179,10 +254,9 @@ describe("BookingWizard", () => {
     await user.click(screen.getByRole("button", { name: "Voltar" }));
 
     await screen.findByRole("heading", { name: "Data e horário" });
-    expect(await screen.findByRole("button", { name: /09:00 às 10:00, disponível/ })).toHaveAttribute(
-      "aria-pressed",
-      "true",
-    );
+    expect(
+      await screen.findByRole("button", { name: /09:00 às 10:00, disponível/ }),
+    ).toHaveAttribute("aria-pressed", "true");
     expect(screen.getByRole("button", { name: "Continuar" })).toBeEnabled();
   });
 
@@ -197,7 +271,8 @@ describe("BookingWizard", () => {
         "fetch",
         vi.fn((input: string) => {
           if (input.endsWith("/rooms")) return Promise.resolve(jsonResponse(200, [room]));
-          if (input.includes("/availability")) return Promise.resolve(jsonResponse(200, availability));
+          if (input.includes("/availability"))
+            return Promise.resolve(jsonResponse(200, availability));
           throw new Error(`fetch não mockado para ${input}`);
         }),
       );
@@ -229,7 +304,8 @@ describe("BookingWizard", () => {
       "fetch",
       vi.fn((input: string) => {
         if (input.endsWith("/rooms")) return Promise.resolve(jsonResponse(200, [room]));
-        if (input.includes("/availability")) return Promise.resolve(jsonResponse(200, availability));
+        if (input.includes("/availability"))
+          return Promise.resolve(jsonResponse(200, availability));
         throw new Error(`fetch não mockado para ${input}`);
       }),
     );

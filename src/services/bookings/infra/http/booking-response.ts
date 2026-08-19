@@ -23,6 +23,10 @@ export function toBookingResponse(booking: Booking, timezone: string): BookingRe
     status: booking.status,
     totalInCents: booking.totalInCents,
     notes: booking.notes,
+    expiresAt: booking.expiresAt?.toISOString() ?? null,
+    stripeCheckoutSessionId: booking.stripeCheckoutSessionId,
+    checkedInAt: booking.checkedInAt?.toISOString() ?? null,
+    checkedOutAt: booking.checkedOutAt?.toISOString() ?? null,
     createdAt: booking.createdAt.toISOString(),
     updatedAt: booking.updatedAt.toISOString(),
   };

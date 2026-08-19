@@ -1,4 +1,10 @@
 import type { FastifyReply, FastifyRequest } from "fastify";
+import {
+  AuditAction,
+  AuditActorType,
+  AuditResource,
+  type AuditLog,
+} from "@services/audit/domain/audit-log";
 import { WeekScheduleSchema, type RoomScheduleResponse } from "@shared/schemas/schedule.schema";
 import { getRequestAuth } from "@services/identity/infra/http/require-auth";
 import { HttpError } from "@services/http/http-error";
@@ -21,6 +27,7 @@ export class RoomScheduleController {
     private readonly listRoomSchedulesUseCase: ListRoomSchedulesUseCase,
     private readonly replaceRoomSchedulesUseCase: ReplaceRoomSchedulesUseCase,
     private readonly deleteRoomScheduleUseCase: DeleteRoomScheduleUseCase,
+    private readonly auditLog: AuditLog,
   ) {}
 
   async list(
@@ -40,7 +47,7 @@ export class RoomScheduleController {
     request: FastifyRequest<RoomScheduleParams>,
     reply: FastifyReply,
   ): Promise<FastifyReply> {
-    const { companyId } = getRequestAuth(request);
+    const { companyId, userId } = getRequestAuth(request);
     const parsed = WeekScheduleSchema.safeParse(request.body);
 
     if (!parsed.success) {
@@ -51,6 +58,16 @@ export class RoomScheduleController {
       .execute(request.params.id, companyId, parsed.data)
       .catch(mapRoomError);
 
+    await this.auditLog.record({
+      companyId,
+      actorType: AuditActorType.USER,
+      actorUserId: userId,
+      action: AuditAction.UPDATE,
+      resource: AuditResource.ROOM_SCHEDULE,
+      resourceId: request.params.id,
+      metadata: { weekdays: schedules.map((schedule) => schedule.weekday) },
+    });
+
     return reply.send(schedules.map(toRoomScheduleResponse));
   }
 
@@ -58,11 +75,22 @@ export class RoomScheduleController {
     request: FastifyRequest<RoomScheduleWeekdayParams>,
     reply: FastifyReply,
   ): Promise<FastifyReply> {
-    const { companyId } = getRequestAuth(request);
+    const { companyId, userId } = getRequestAuth(request);
+    const weekday = parseWeekday(request.params.weekday);
 
     await this.deleteRoomScheduleUseCase
-      .execute(request.params.id, companyId, parseWeekday(request.params.weekday))
+      .execute(request.params.id, companyId, weekday)
       .catch(mapRoomError);
+
+    await this.auditLog.record({
+      companyId,
+      actorType: AuditActorType.USER,
+      actorUserId: userId,
+      action: AuditAction.UPDATE,
+      resource: AuditResource.ROOM_SCHEDULE,
+      resourceId: request.params.id,
+      metadata: { deletedWeekday: weekday },
+    });
 
     return reply.code(204).send();
   }

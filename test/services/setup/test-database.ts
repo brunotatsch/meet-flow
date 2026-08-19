@@ -1,6 +1,7 @@
 import { SQL } from "bun";
 import { drizzle } from "drizzle-orm/bun-sql";
 import * as schema from "@services/database/schema";
+import { createRuntimeDatabaseOptions } from "@services/database/connection-options";
 import { findPostgresFailure, type PostgresFailure } from "@services/database/postgres-error";
 
 export type TestDatabase = ReturnType<typeof createTestDatabase>;
@@ -17,7 +18,7 @@ export function createTestDatabase() {
     throw new Error("DATABASE_URL ausente: a suíte e2e depende de .env.test.");
   }
 
-  const client = new SQL(databaseUrl);
+  const client = new SQL(createRuntimeDatabaseOptions(databaseUrl));
 
   return {
     client,

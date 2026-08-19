@@ -1,164 +1,271 @@
 # meet-flow
 
-SaaS de agendamento de salas para hotéis e coworkings.
-O roteiro completo está em [`docs/plano.md`](docs/plano.md) e as decisões já implementadas em [`docs/architecture.md`](docs/architecture.md).
+SaaS multi-tenant de agendamento de salas para hotéis e coworkings. A aplicação roda em
+arquitetura Serverless: SPA React 19/Vite na CDN da Vercel, Fastify em uma Vercel Function com
+runtime Bun e Supabase Postgres acessado pelo Transaction pooler.
+
+As decisões e invariantes estão em [`docs/architecture.md`](docs/architecture.md); o estado das
+entregas e a operação de produção estão em [`docs/plano.md`](docs/plano.md).
+
+## O que está entregue
+
+- wizard público com disponibilidade no fuso da empresa, hold de 31 minutos e Stripe Checkout;
+- assinaturas `free`, `starter` e `pro`, limites por tenant e portal de cobrança;
+- autenticação Better Auth, organizações multi-tenant e RBAC `owner`/`manager`/`staff`;
+- gestão de equipe com convites, aceite/cadastro e proteção do último owner;
+- agenda diária e semanal, reserva manual, reagendamento, check-in, check-out e no-show;
+- bloqueios de sala avulsos ou recorrentes, refletidos na disponibilidade pública;
+- relatórios de ocupação, receita e cancelamentos, com exportação CSV;
+- e-mails transacionais por outbox durável e cancelamento por link assinado;
+- hardening HTTP, logs estruturados, request ID, liveness/readiness e rate limit distribuído.
 
 ## Requisitos
 
-- [Bun](https://bun.sh) >= 1.3
-- [Docker](https://www.docker.com/) com Docker Compose
+- [Bun](https://bun.sh) >= 1.3;
+- Docker Engine, Docker Desktop ou outro runtime compatível com o Supabase CLI, em execução;
+- um projeto Supabase separado por ambiente para usar o modo remoto, Preview ou Production;
+- conta Stripe em modo de teste para exercitar pagamentos;
+- Resend ou `EMAIL_PROVIDER=disabled` para desenvolvimento.
+
+Docker é dependência **somente do desenvolvimento local**, porque o Supabase CLI o usa para subir
+sua stack. Não há Dockerfile, container da aplicação ou Docker no deploy de produção: Vercel e o
+Supabase gerenciado continuam sendo a topologia publicada.
 
 ## Rodando localmente
 
 ```bash
+cp .env.example .env
+bun install
 bun run dev
 ```
 
-Esse comando faz tudo: instala dependências, garante o `.env`, sobe o Postgres via Docker, espera o banco ficar pronto, roda as migrations, inicia a API com hot reload em `http://localhost:3000` e o frontend (Vite) em `http://localhost:5173`.
+Sem configuração adicional, `bun run dev` usa `DEV_DATABASE_MODE=local`. O orquestrador:
 
-Verifique se subiu com:
+1. valida Bun, Supabase CLI e um runtime Docker compatível;
+2. inicia a stack local do Supabase somente se ela ainda não estiver em execução;
+3. aplica as migrations versionadas do Drizzle;
+4. executa o preflight de configuração, conexão e versão do schema;
+5. inicia a API Fastify em modo watch e o frontend Vite.
 
-```bash
-curl http://localhost:3000/health   # API direta
-curl http://localhost:5173/health   # mesma resposta, via proxy do Vite
-```
+Drizzle é o único sistema de migrations. Essa aplicação automática acontece no processo de
+orquestração local, antes da API subir; migrations nunca rodam no import da aplicação, em request
+ou cold start. `Ctrl+C` encerra API e Vite, mas deixa a stack Supabase ativa para a próxima sessão.
+Use `bun run db:local:stop` quando quiser derrubá-la explicitamente.
 
-O proxy do Vite (`vite.web.config.ts`) cobre `/api` e `/health`: a SPA fala com a API pelo mesmo host da própria SPA, sem CORS manual em dev.
+O comando inicia a API local com hot reload em `http://localhost:3000` e o frontend Vite em
+`http://localhost:5173`. O proxy do Vite encaminha `/api` para o Fastify local, mantendo a mesma
+origem vista pela SPA.
 
-## Outros comandos
-
-```bash
-bun run lint          # ESLint (backend e frontend)
-bun run typecheck     # tsc --noEmit (backend e frontend)
-bun run test          # testes unitários do backend (Vitest)
-bun run test:web      # testes de render dos componentes do frontend (Vitest + jsdom)
-bun run test:e2e      # testes end-to-end contra o Postgres (usa .env.test)
-bun run build:web     # build de produção da SPA em dist/web
-bun run db:generate   # gera uma migration a partir dos schemas Drizzle
-bun run db:migrate    # aplica as migrations pendentes
-bun run db:studio     # abre o Drizzle Studio
-```
-
-`bun run test:e2e` é destrutivo: ele derruba o schema do banco apontado por `.env.test` e reaplica todas as migrations antes de rodar.
-Existe uma trava que aborta a execução se o banco não terminar com `_test`.
-
-`bun run db:studio` depende de um driver Node (`pg` ou `postgres`), que o projeto não instala.
-O restante do fluxo de banco usa o driver nativo do Bun.
-
-## CI
-
-Todo push e pull request para `main` roda em [`.github/workflows/ci.yml`](.github/workflows/ci.yml), com quatro jobs em paralelo: `lint`, `typecheck`, `test` (unitários de backend e de frontend) e `test-e2e` (contra um Postgres efêmero de serviço, nas mesmas credenciais de `.env.test`).
-Não há passo manual: o job de e2e sobe o banco, aplica as migrations do zero e roda a suíte, exatamente como localmente.
-
-## Banco de dados
-
-O schema vive junto de cada serviço, em `src/services/<serviço>/infra/database/schema/`, e o `drizzle.config.ts` os varre por glob.
-As migrations versionadas ficam em `drizzle/`, incluindo `drizzle/meta/`, que o migrator precisa para saber o que já foi aplicado.
-
-A prevenção de double-booking é uma invariante do banco, não da aplicação.
-A tabela `bookings` tem uma coluna gerada `period` (`tstzrange(starts_at, ends_at, '[)')`) e uma constraint `EXCLUDE USING gist` que impede dois períodos sobrepostos na mesma sala, ignorando reservas canceladas.
-Como o intervalo é semiaberto, uma reserva que começa exatamente quando a anterior termina é aceita.
-A aplicação nunca escreve `period`: a coluna nem existe no schema TypeScript.
-
-Conflito de horário chega na aplicação como o SQLSTATE `23P01`, que a MVP-07 traduz para HTTP 409.
-
-As tabelas de autenticação (`user`, `session`, `account`, `verification`, `organization`, `member`, `invitation`) são geradas pelo CLI do Better Auth:
+Para trabalhar deliberadamente contra um projeto Supabase remoto, configure `DATABASE_URL` com o
+Transaction pooler e `DIRECT_DATABASE_URL` com a conexão direta ou Session pooler e execute:
 
 ```bash
-bunx @better-auth/cli generate \
-  --config better-auth-cli.config.ts \
-  --output src/services/identity/infra/database/schema/auth.ts
+DEV_DATABASE_MODE=remote bun run dev
 ```
 
-A config da raiz existe porque o CLI roda sob Node e não carrega o driver `bun-sql`.
-Ela importa a mesma lista de plugins que a aplicação usa, então o schema gerado não diverge do runtime.
-A saída do CLI precisa de uma edição manual, descrita no cabeçalho do arquivo gerado.
+O modo remoto preserva exatamente as URLs fornecidas e **nunca aplica migrations
+automaticamente**. Depois de confirmar projeto e ambiente, execute `bun run db:migrate` de forma
+explícita antes de iniciar uma versão que dependa de schema novo. Nunca use credenciais de
+Production no desenvolvimento cotidiano.
 
-## Autenticação e multi-tenancy
+```bash
+curl http://localhost:3000/api/health
+curl http://localhost:5173/api/health
+curl http://localhost:3000/api/ready
+```
 
-O tenant é a `organization` do Better Auth; `companies` guarda o perfil de negócio e aponta para ela.
+`/api/health` é liveness sem dependências; `/api/ready` consulta o banco e responde 503 sem expor
+detalhes quando o Postgres não está disponível.
+
+## Comandos
+
+```bash
+bun run dev             # Supabase local + migrations + preflight + API + Vite
+bun run start:local     # somente Fastify local, com listen() e preflight
+bun run build           # build de produção da SPA em dist/web
+bun run lint            # ESLint em backend e frontend
+bun run typecheck       # TypeScript estrito em backend e frontend
+bun run test            # testes do backend
+bun run test:web        # testes dos componentes React
+bun run test:e2e        # integração destrutiva contra o banco de .env.test
+bun run db:local:start  # inicia/reutiliza a stack local do Supabase
+bun run db:local:status # mostra o estado e endpoints da stack local
+bun run db:local:stop   # encerra explicitamente a stack local
+bun run db:generate     # gera migration Drizzle durante desenvolvimento
+bun run db:migrate      # aplica migrations com DIRECT_DATABASE_URL
+bun run db:seed         # seed explícito de desenvolvimento
+bun run db:studio       # Drizzle Studio
+```
+
+Os comandos `db:local:*` controlam somente a stack do Supabase CLI. Eles não iniciam nem encerram
+API ou Vite. Em `DEV_DATABASE_MODE=remote`, `bun run dev` não chama esses comandos.
+
+`bun run test:e2e` derruba o schema apontado por `.env.test` e reaplica todas as migrations. Uma
+trava aborta a suíte se o nome do banco não terminar em `_test`. Preview, E2E e Production devem
+usar bancos ou projetos separados.
+
+## Banco, migrations e concorrência
+
+Os schemas Drizzle ficam junto dos serviços em
+`src/services/<serviço>/infra/database/schema/`. As migrations SQL e o journal do migrator são
+versionados em `drizzle/` e devem ser aplicados na ordem `0000` a `0009`:
+
+| Faixa         | Conteúdo                                                              |
+| ------------- | --------------------------------------------------------------------- |
+| `0000`–`0002` | schema inicial, exclusão de double-booking e Better Auth multi-tenant |
+| `0003`–`0004` | Stripe, assinaturas, holds, checks e auditoria                        |
+| `0005`–`0007` | rate limit distribuído, índices de relatórios e outbox de e-mail      |
+| `0008`–`0009` | estado operacional da agenda e bloqueios de sala concorrentes         |
+
+Migrations são operações administrativas one-shot. Em banco remoto, sua execução é explícita e
+anterior ao deploy que depende delas; no Supabase local, `bun run dev` aciona o mesmo migrator antes
+de abrir o servidor. Nos dois casos elas usam `DIRECT_DATABASE_URL` e nunca são executadas por
+request, no entrypoint da Function ou durante cold start.
+
+A prevenção de ocupação dupla é uma invariante do Postgres:
+
+- `bookings_no_overlap` impede reservas sobrepostas na mesma sala;
+- `room_blocks_no_overlap` impede bloqueios sobrepostos;
+- o trigger `enforce_room_occupancy` serializa reservas e bloqueios pela linha da sala e impede a
+  corrida entre as duas tabelas;
+- intervalos são semiabertos `[startsAt, endsAt)`, portanto eventos adjacentes são válidos;
+- violações `23P01` são traduzidas para HTTP 409, nunca para 500.
+
+## Autenticação, RBAC e equipe
+
+O tenant é a `organization` do Better Auth; `companies` guarda o perfil da empresa. Cadastro,
+usuário, organização, vínculo `owner` e company nascem em uma transação por
+`POST /api/v1/sign-up`.
+
+A regra central é: **`companyId` vem de `request.auth`, nunca do body, query ou header.** A SPA usa
+a matriz compartilhada de permissões para esconder ações, mas toda autorização é repetida no
+backend.
+
+| Papel     | Acesso resumido                                               |
+| --------- | ------------------------------------------------------------- |
+| `owner`   | operação completa, equipe, billing e relatórios               |
+| `manager` | salas, agenda, bloqueios, convites e relatórios; sem billing  |
+| `staff`   | leitura de salas/bloqueios e operação de reservas; sem gestão |
+
+Convites são enviados pelo mesmo outbox de e-mail. Alterar ou remover o último `owner` é recusado.
+Mutações de salas, agendas, reservas e bloqueios geram `audit_events` persistidos.
+
+## API principal
 
 ```text
-POST /api/v1/sign-up   # cria usuário, organização, vínculo owner e company em uma transação
-GET  /api/v1/me        # usuário, company e papel da sessão atual
-POST /api/auth/*       # login, logout e sessão, servidos pelo Better Auth
+GET  /api/health
+GET  /api/ready
+GET/POST /api/auth/*
+
+POST   /api/v1/sign-up
+GET    /api/v1/me
+GET    /api/v1/rooms
+GET    /api/v1/bookings?date=YYYY-MM-DD
+GET    /api/v1/bookings?weekStart=YYYY-MM-DD
+POST   /api/v1/bookings
+PATCH  /api/v1/bookings/:id/reschedule
+POST   /api/v1/bookings/:id/check-in
+POST   /api/v1/bookings/:id/check-out
+POST   /api/v1/bookings/:id/no-show
+GET    /api/v1/room-blocks?from=&to=&roomId=
+POST   /api/v1/room-blocks
+DELETE /api/v1/room-blocks/:id?scope=occurrence|series
+GET    /api/v1/reports?from=YYYY-MM-DD&to=YYYY-MM-DD
+GET    /api/v1/reports.csv?from=YYYY-MM-DD&to=YYYY-MM-DD
 ```
 
-O cadastro embutido do Better Auth e a criação avulsa de organização estão desligados: o cadastro tem um caminho só.
-
-A regra que atravessa todo o backend: **`companyId` vem sempre de `request.auth`, nunca do body, da query ou de um header.**
-O porquê e como aplicá-la estão em [`docs/architecture.md`](docs/architecture.md).
-
-## Salas e disponibilidade
+A superfície do wizard, sem sessão, fica sob `/api/v1/public/:companySlug` e tem rate limit
+próprio compartilhado entre todas as Functions:
 
 ```text
-GET    /api/v1/rooms                        # CRUD de salas, tudo atrás de requireAuth
-GET    /api/v1/rooms/:id/schedules          # janela de funcionamento por dia da semana
-PUT    /api/v1/rooms/:id/schedules          # substitui a semana inteira, em uma transação
-DELETE /api/v1/rooms/:id/schedules/:weekday # fecha um dia específico
-
-GET /api/v1/public/:companySlug                            # perfil público da empresa
-GET /api/v1/public/:companySlug/rooms                       # só salas ativas, campos públicos
-GET /api/v1/public/:companySlug/rooms/:roomId/availability?date=YYYY-MM-DD
+GET  /api/v1/public/:companySlug
+GET  /api/v1/public/:companySlug/rooms
+GET  /api/v1/public/:companySlug/rooms/:roomId/availability?date=YYYY-MM-DD
+POST /api/v1/public/:companySlug/bookings
+GET  /api/v1/public/:companySlug/checkout-sessions/:sessionId
+POST /api/v1/public/bookings/cancel
 ```
 
-As quatro rotas sob `/api/v1/public/:companySlug` (as duas acima mais as de reservas, adiante) não têm sessão: o tenant vem do slug da URL, resolvido uma única vez por um `preHandler` compartilhado, com rate limit próprio.
-O porquê e o desenho completo estão em [`docs/architecture.md`](docs/architecture.md).
+A disponibilidade combina agenda, reservas ativas e bloqueios. Datas de negócio atravessam a API
+em ISO 8601 com offset explícito no fuso IANA da empresa; preço e limites de plano são sempre
+recalculados no servidor.
 
-A rota de disponibilidade é o passo 2 do wizard, consumido por quem ainda não tem conta.
-Ela devolve a grade do dia no fuso da empresa, em ISO 8601 com offset explícito, com o preço de cada slot proporcional à tarifa horária da sala.
+## Jobs externos
 
-Sala sem agenda cadastrada para aquele dia é tratada como fechada, nunca como aberta 24h.
-Sala inativa ou de outra empresa responde 404.
+Não existe worker residente, `setInterval` nem processamento fire-and-forget. Configure Supabase
+Cron ou outro scheduler externo:
 
-A grade avança em tempo real, não em horário de parede, para que os dias de transição de horário de verão não dupliquem nem percam slots.
-O raciocínio completo, o arredondamento de preço e o tratamento das horas inexistente e ambígua estão em [`docs/architecture.md`](docs/architecture.md).
+| Endpoint                                    | Frequência recomendada | Função                                                           |
+| ------------------------------------------- | ---------------------- | ---------------------------------------------------------------- |
+| `POST /api/v1/jobs/expire-pending-bookings` | a cada minuto          | cancela holds vencidos de forma idempotente                      |
+| `POST /api/v1/jobs/process-email-outbox`    | a cada minuto          | adquire eventos vencidos com lease, envia e aplica retry/backoff |
+| `POST /api/v1/jobs/cleanup-rate-limits`     | a cada 5 minutos       | remove até 10.000 janelas expiradas por lote                     |
 
-## Reservas
+Os três exigem `Authorization: Bearer <CRON_SECRET>`. O scheduler deve aceitar entrega
+at-least-once: os jobs, a deduplicação e o progresso vivem no Postgres. A expiração lazy nas
+leituras/criações protege os horários mesmo se o scheduler atrasar. A limpeza impede crescimento
+indefinido de `api_rate_limits` causado por chaves que não voltam a receber tráfego. O Vercel Cron
+do plano Hobby não tem frequência suficiente para holds de aproximadamente 30 minutos; use
+Supabase Cron ou equivalente.
 
-```text
-POST   /api/v1/public/:companySlug/bookings   # passo 4 do wizard, sem sessão
-GET    /api/v1/bookings?from=&to=&roomId=     # agenda da empresa no período, atrás de requireAuth
-DELETE /api/v1/bookings/:id                   # cancela e devolve o horário para a grade
-```
+## Deploy na Vercel
 
-A prevenção de double-booking não é feita pela aplicação: ela não consulta a disponibilidade antes de gravar, porque isso só moveria a corrida para a janela entre o `SELECT` e o `INSERT`.
-Quem arbitra é a constraint `bookings_no_overlap`, e o `23P01` vira `409` com `code: BOOKING_CONFLICT`.
-N requisições simultâneas para o mesmo horário produzem exatamente uma reserva, e o teste de concorrência em `test/services/bookings/booking.e2e-spec.ts` prova isso contra o Postgres.
+`vercel.json` define Bun `1.x`, instala com lockfile congelado, executa `bun run build`, publica
+`dist/web`, encaminha `/api/*` a `api/server.ts` e aplica fallback da SPA somente fora de `/api`.
+O wrapper prepara uma instância Fastify por isolate quente e nunca chama `listen()`.
 
-`total_in_cents` é sempre calculado no servidor, a partir da tarifa da sala e da grade do dia; um preço enviado no corpo é descartado na validação.
-Horário fora da janela de funcionamento, fora das bordas da grade ou já iniciado responde `422`.
+Checklist de Production:
 
-Cancelar não apaga a linha: o `status` vira `cancelled`, a reserva sai do índice da constraint e o horário volta para a grade, preservando o histórico.
+1. Crie o projeto Supabase na região mais próxima possível da Function e obtenha as duas URLs de
+   conexão.
+2. Configure os secrets abaixo separadamente em Preview e Production.
+3. Aplique `bun run db:migrate` com `DIRECT_DATABASE_URL` antes do deploy do código.
+4. Cadastre no Stripe o webhook `https://<domínio>/api/v1/webhooks/stripe` e copie o signing secret.
+5. Configure os três jobs externos com o mesmo `CRON_SECRET` da Function.
+6. Verifique `/api/health`, `/api/ready`, login, webhook Stripe e uma execução de cada job.
+7. Monitore logs por `requestId`, cold starts, latência do banco, 429/5xx, backlog/dead letters do
+   outbox e atraso de expiração dos holds.
 
-## Frontend
+Variáveis de produção:
 
-SPA em React 19 + React Router 7, servida pelo Vite (`vite.web.config.ts`) em dev e buildada para `dist/web` em produção - o Fastify não serve os assets, só a API.
+| Variável                                                | Uso                                                       |
+| ------------------------------------------------------- | --------------------------------------------------------- |
+| `NODE_ENV=production`                                   | ativa validações, cookies seguros, HSTS e proxy confiável |
+| `APP_URL`, `BETTER_AUTH_URL`                            | origem HTTPS pública do deployment                        |
+| `DATABASE_URL`                                          | Supavisor Transaction pooler `:6543`, com TLS             |
+| `DIRECT_DATABASE_URL`                                   | migrations/Drizzle Kit; não é usada por requests          |
+| `BETTER_AUTH_SECRET`                                    | assinatura de sessão, distinto por ambiente               |
+| `CORS_ALLOWED_ORIGINS`                                  | origens adicionais, se realmente necessárias              |
+| `LOG_LEVEL`                                             | nível dos logs estruturados                               |
+| `GLOBAL_RATE_LIMIT_MAX`, `GLOBAL_RATE_LIMIT_WINDOW_MS`  | teto global distribuído                                   |
+| `STRIPE_SECRET_KEY`, `STRIPE_WEBHOOK_SECRET`            | API e assinatura do webhook Stripe                        |
+| `STRIPE_PRICE_STARTER`, `STRIPE_PRICE_PRO`              | Price IDs das assinaturas                                 |
+| `CRON_SECRET`                                           | autenticação dos jobs, mínimo de 32 caracteres            |
+| `EMAIL_PROVIDER=resend`, `RESEND_API_KEY`, `EMAIL_FROM` | entrega de e-mails                                        |
+| `BOOKING_CANCELLATION_SECRET`                           | HMAC dos links públicos de cancelamento                   |
 
-```text
-src/web/
-  index.html
-  src/
-    main.tsx, app.tsx         # bootstrap e composição de providers/router
-    index.css                 # Tailwind v4 + tokens de design (claro/escuro via classe .dark)
-    components/                # base estilo shadcn: Button, Input, Label, Card, Badge,
-                                # Skeleton, Dialog (Radix), Toast (contexto próprio)
-    layouts/                   # PublicBookingLayout (/:companySlug/agendar) e AdminLayout
-                                # (/admin/*, com guard de sessão via useSession)
-    routes/                    # árvore de rotas, página 404
-    providers/                 # ErrorBoundary
-    lib/                       # api.ts (client HTTP tipado com Zod), auth-client.ts
-```
+Nenhuma variável server-side pode receber prefixo `VITE_`. Rotacionar
+`BOOKING_CANCELLATION_SECRET` invalida links emitidos; rotacionar `BETTER_AUTH_SECRET` invalida
+sessões.
 
-O client HTTP (`@web/lib/api`) sempre valida a resposta contra um schema de `src/shared` e converte erro HTTP em `ApiRequestError` (com `status` e o `ApiError` do backend) ou `ApiTransportError` (rede ou contrato incompatível) - nenhuma tela precisa parsear `response.json()` na mão.
+## Frontend e CI
 
-Testes de componente ficam em `test/web/**/*.spec.tsx`, com Testing Library sobre jsdom (`vitest.web.config.ts`), independentes da suíte de backend.
+A SPA React 19 usa React Router 7 e valida todas as respostas com os contratos Zod de
+`src/shared`. As telas administrativas cobrem salas/agendas, bloqueios, calendário, equipe,
+cobrança e relatórios. O fluxo público cobre wizard, retorno do Checkout e cancelamento explícito
+por link assinado.
+
+Todo push e pull request para `main` executa [`.github/workflows/ci.yml`](.github/workflows/ci.yml)
+com lint, typecheck, testes de backend/frontend e E2E contra Postgres efêmero isolado. Esse banco
+de CI não representa a topologia de produção.
 
 ## Estrutura
 
 ```text
-src/
-  shared/     # Contratos Zod, enums e tipos compartilhados entre backend e frontend
-  services/   # Módulos de backend (domain / application / infra por serviço)
-  web/        # SPA React
+api/server.ts      # adaptador Vercel -> Fastify, sem listen()
+drizzle/           # migrations SQL e metadados Drizzle
+src/shared/        # contratos Zod, enums e matriz de permissões
+src/services/      # módulos backend: domain/application/infra
+src/web/           # SPA React
+dist/web/          # saída gerada pelo Vite
 ```

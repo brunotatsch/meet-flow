@@ -5,6 +5,7 @@ import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
 import { BookingResponseSchema } from "@shared/schemas/booking.schema";
 import { bookings } from "@services/bookings/infra/database/schema/bookings";
 import { buildServer } from "@services/http/server";
+import { FakeStripeGateway } from "../billing/fake-stripe-gateway";
 import { createTestDatabase, type TestDatabase } from "../setup/test-database";
 
 /**
@@ -109,7 +110,7 @@ function book(tenant: Tenant, overrides: Record<string, unknown> = {}) {
 }
 
 beforeAll(async () => {
-  app = buildServer();
+  app = buildServer({ api: { billing: { stripeGateway: new FakeStripeGateway() } } });
   await app.ready();
   database = createTestDatabase();
 
@@ -134,12 +135,12 @@ describe("POST /api/v1/public/:companySlug/bookings", () => {
     const response = await book(hotel);
 
     expect(response.statusCode).toBe(201);
-    expect(() => BookingResponseSchema.parse(response.json())).not.toThrow();
-    expect(response.json()).toMatchObject({
+    expect(() => BookingResponseSchema.parse(response.json().booking)).not.toThrow();
+    expect(response.json().booking).toMatchObject({
       companyId: hotel.companyId,
       roomId: hotel.roomId,
       customerName: "Ana Prado",
-      status: "confirmed",
+      status: "pending",
       startsAt: NINE,
       endsAt: TEN,
     });
@@ -147,22 +148,23 @@ describe("POST /api/v1/public/:companySlug/bookings", () => {
     const [row] = await database.db
       .select()
       .from(bookings)
-      .where(eq(bookings.id, response.json().id));
+      .where(eq(bookings.id, response.json().booking.id));
 
     expect(row?.companyId).toBe(hotel.companyId);
-    expect(row?.status).toBe("confirmed");
+    expect(row?.status).toBe("pending");
+    expect(response.json().checkout.url).toMatch(/^https:\/\/checkout\.stripe\.test\//);
   });
 
   it("calcula total_in_cents no servidor e ignora o preço enviado no corpo", async () => {
     const response = await book(hotel, { endsAt: ELEVEN, totalInCents: 1 });
 
     expect(response.statusCode).toBe(201);
-    expect(response.json().totalInCents).toBe(24_000);
+    expect(response.json().booking.totalInCents).toBe(24_000);
 
     const [row] = await database.db
       .select()
       .from(bookings)
-      .where(eq(bookings.id, response.json().id));
+      .where(eq(bookings.id, response.json().booking.id));
 
     expect(row?.totalInCents).toBe(24_000);
   });
@@ -174,9 +176,9 @@ describe("POST /api/v1/public/:companySlug/bookings", () => {
     });
 
     expect(response.statusCode).toBe(201);
-    expect(response.json()).toMatchObject({
+    expect(response.json().booking).toMatchObject({
       companyId: hotel.companyId,
-      status: "confirmed",
+      status: "pending",
     });
   });
 
@@ -507,7 +509,7 @@ describe("DELETE /api/v1/bookings/:id", () => {
 
     const response = await app.inject({
       method: "DELETE",
-      url: `/api/v1/bookings/${created.json().id}`,
+      url: `/api/v1/bookings/${created.json().booking.id}`,
     });
 
     expect(response.statusCode).toBe(401);
@@ -519,7 +521,7 @@ describe("DELETE /api/v1/bookings/:id", () => {
 
     const cancelled = await app.inject({
       method: "DELETE",
-      url: `/api/v1/bookings/${created.json().id}`,
+      url: `/api/v1/bookings/${created.json().booking.id}`,
       headers: { cookie: hotel.cookie },
     });
 
@@ -532,14 +534,14 @@ describe("DELETE /api/v1/bookings/:id", () => {
     const created = await book(hotel);
     await app.inject({
       method: "DELETE",
-      url: `/api/v1/bookings/${created.json().id}`,
+      url: `/api/v1/bookings/${created.json().booking.id}`,
       headers: { cookie: hotel.cookie },
     });
 
     const [row] = await database.db
       .select()
       .from(bookings)
-      .where(eq(bookings.id, created.json().id));
+      .where(eq(bookings.id, created.json().booking.id));
 
     expect(row?.status).toBe("cancelled");
   });
@@ -549,7 +551,7 @@ describe("DELETE /api/v1/bookings/:id", () => {
 
     const response = await app.inject({
       method: "DELETE",
-      url: `/api/v1/bookings/${created.json().id}`,
+      url: `/api/v1/bookings/${created.json().booking.id}`,
       headers: { cookie: coworking.cookie },
     });
 
@@ -571,7 +573,7 @@ describe("integração com a grade de disponibilidade", () => {
 
     await app.inject({
       method: "DELETE",
-      url: `/api/v1/bookings/${created.json().id}`,
+      url: `/api/v1/bookings/${created.json().booking.id}`,
       headers: { cookie: hotel.cookie },
     });
 

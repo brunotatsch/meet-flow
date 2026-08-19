@@ -1,5 +1,6 @@
-import type { FastifyError, FastifyInstance } from "fastify";
+import type { FastifyError, FastifyInstance, FastifyReply } from "fastify";
 import type { ApiError } from "@shared/types/api-error";
+import { findPostgresUnavailableCode } from "@services/database/postgres-error";
 
 /**
  * Erro de negócio com tradução direta para HTTP, serializado no formato `ApiError`
@@ -20,32 +21,51 @@ export class HttpError extends Error {
 /**
  * Converte `HttpError` em resposta e deixa o resto virar 500.
  *
- * Isto é o que permite que hooks (`preHandler`) interrompam a requisição lançando
- * um erro em vez de responderem por conta própria, o que **é obrigatório** neste
- * runtime: no Bun, `reply.sent` continua `false` logo depois de `reply.send()`,
- * porque ele deriva de `raw.writableEnded`. O Fastify usa esse sinal para decidir
- * se ainda roda o handler da rota, então um `return reply.code(401).send(...)`
- * dentro de um hook async responde 401 **e mesmo assim executa o handler** - que
- * então tenta responder de novo e derruba a requisição com `ERR_HTTP_HEADERS_SENT`.
- * Sob Node o mesmo código se comporta como a documentação do Fastify descreve.
- *
- * Erro lançado não tem essa ambiguidade: o Fastify o entrega direto ao
- * `preHandlerCallback`, que responde e nunca chama o handler.
+ * Hooks (`preHandler`) interrompem a pipeline lançando um erro, em vez de misturar
+ * `reply.send()` com retorno normal do hook. Isso preserva uma única resposta sob
+ * o servidor local, o bridge HTTP da Function e futuros adapters: o Fastify entrega
+ * o erro direto ao error handler e nunca chama o handler da rota.
  * Regressão coberta em `test/services/http/pre-handler-abort.spec.ts`.
  */
 export function registerErrorHandler(app: FastifyInstance): void {
   app.setErrorHandler((error, request, reply) => {
     if (error instanceof HttpError) {
+      if (error.statusCode === 401 || error.statusCode === 403) preventCaching(reply);
+
       const body: ApiError = {
         code: error.code,
         message: error.message,
+        requestId: request.id,
         ...(error.details === undefined ? {} : { details: error.details }),
       };
 
       return reply.code(error.statusCode).send(body);
     }
 
-    request.log.error(error);
+    const databaseErrorCode = findPostgresUnavailableCode(error);
+
+    if (databaseErrorCode) {
+      request.log.error(
+        {
+          event: "database_unavailable",
+          requestId: request.id,
+          errorCode: databaseErrorCode,
+          ...(request.auth
+            ? { companyId: request.auth.companyId, userId: request.auth.userId }
+            : {}),
+        },
+        "database unavailable",
+      );
+
+      preventCaching(reply);
+      reply.header("retry-after", "5");
+
+      return reply.code(503).send({
+        code: "SERVICE_UNAVAILABLE",
+        message: "Serviço temporariamente indisponível. Tente novamente.",
+        requestId: request.id,
+      } satisfies ApiError);
+    }
 
     /**
      * Erros que o próprio Fastify levanta (payload malformado, corpo grande demais)
@@ -55,12 +75,38 @@ export function registerErrorHandler(app: FastifyInstance): void {
     const { statusCode = 500, code, message } = error as Partial<FastifyError>;
 
     if (statusCode >= 500) {
-      return reply.code(500).send({ code: "INTERNAL_ERROR", message: "Erro interno." });
+      request.log.error(
+        {
+          event: "unhandled_request_error",
+          requestId: request.id,
+          errorName: error instanceof Error ? error.name : "UnknownError",
+          errorCode: code,
+          statusCode,
+          ...(request.auth
+            ? { companyId: request.auth.companyId, userId: request.auth.userId }
+            : {}),
+        },
+        "unhandled request error",
+      );
+
+      return reply.code(500).send({
+        code: "INTERNAL_ERROR",
+        message: "Erro interno.",
+        requestId: request.id,
+      } satisfies ApiError);
     }
 
+    const isFastifyClientError = typeof code === "string" && code.startsWith("FST_");
+
     return reply.code(statusCode).send({
-      code: code ?? "BAD_REQUEST",
-      message: message ?? "Requisição inválida.",
+      code: isFastifyClientError ? code : "BAD_REQUEST",
+      message: isFastifyClientError && message ? message : "Requisição inválida.",
+      requestId: request.id,
     } satisfies ApiError);
   });
+}
+
+function preventCaching(reply: FastifyReply): void {
+  reply.header("cache-control", "private, no-store, max-age=0");
+  reply.header("pragma", "no-cache");
 }
